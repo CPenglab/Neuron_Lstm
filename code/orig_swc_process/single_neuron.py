@@ -16,6 +16,8 @@ from collections import Counter
 import re
 import matplotlib.pyplot as plt
 
+#subprocess.check_call([sys.executable, "-m", "pip", "freeze", ">", "requirements.txt"])
+
 anno = pyswcloader.brain.read_nrrd('annotation_25.nrrd')
 
 def get_regional_paths_optimized(G):
