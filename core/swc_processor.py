@@ -27,7 +27,6 @@ import networkx as nx
 from tqdm import tqdm
 from pyswcloader import swc, brain
 
-
 class SWCProcessor:
     """SWC文件处理器 - 用于原始SWC数据处理和特征提取"""
     
@@ -196,8 +195,7 @@ class SWCProcessor:
                 'compressed_path': compressed,
                 'path_length': len(path_data['regional_path']),
                 'unique_regions': len(set(path_data['regional_path'])),
-                'is_pure': len(set(path_data['regional_path'])) == 1,
-                'total_length': path_data['length']
+                'is_pure': len(set(path_data['regional_path'])) == 1
             })
         return features
 
