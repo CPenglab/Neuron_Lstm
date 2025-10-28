@@ -12,18 +12,20 @@
 - 拓扑排序优化
 
 ```python
-加载注解数据
+# 加载脑区注解数据
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
-resolution = 25  
+resolution = 25  # 图像分辨率，单位：微米
 
-创建批量处理器
+# 创建SWC批量处理器
 batch_processor = BatchSWCProcessor(anno, resolution)
 
-处理所有数据
+# 处理单神经元SWC数据
+# 该路径下存有部分示例数据
+# 完整数据集已整理并放置在 data\neuron_path_data\zip_fold 目录下
 root_path = "data/orig_swc_data/test/unzip/"
-results = batch_processor.process_batch_folders(root_path)
 
-```
+# 执行批量处理
+results = batch_processor.process_batch_folders(root_path)
 
 
 
