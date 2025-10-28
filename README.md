@@ -11,12 +11,12 @@
 - 有向图网络构建
 - 拓扑排序优化
 
-```python```
-# 加载注解数据
+```python
+加载注解数据
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
 resolution = 25  
 batch_processor = BatchSWCProcessor(anno, resolution)
-
+```
 
 
 
