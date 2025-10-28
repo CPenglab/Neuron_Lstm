@@ -20,7 +20,7 @@ resolution = 25  # 图像分辨率，单位：微米
 batch_processor = BatchSWCProcessor(anno, resolution)
 
 # 处理单神经元SWC数据
-# 该路径下存有部分示例数据
+# 该路径下存有部分原始swc示例数据
 # 完整数据集已整理并放置在 data\neuron_path_data\zip_fold 目录下
 root_path = "data/orig_swc_data/test/unzip/"
 
@@ -36,54 +36,39 @@ results = batch_processor.process_batch_folders(root_path)
 **功能特点**：
 - 路径频率统计分析
 - 贪心算法特征路径识别
-- 连续区域路径压缩
-- 路径模式可视化
-
-
 
 ```python
-加载数据
+#加载数据
+#directed_df为小鼠脑物理邻接矩阵
+#all_regional_paths.csv为上一步单神经元整理出的路径信息
 directed_df=pd.read_csv('data/小鼠邻接矩阵_filted_anno.csv',index_col=0)
 file = pd.read_csv('data/orig_swc_data/test/unzip/all_regional_paths.csv')
 
 combined_df = pd.concat([file], ignore_index=True)
-加载脑区数据
+#加载脑区结构信息数据
 allen_brain_tree = pyswcloader.brain.allen_brain_tree('data/1.json')
 stl_acro_dict = pyswcloader.brain.acronym_dict('data/1.json')
 
-创建处理器
+#创建处理器
 processor = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
-处理路径数据
+#处理路径数据
 keys_set = processor.filter_problematic_nodes(directed_df, stl_acro_dict)
-combined_df['processed_compressed_path'] = combined_df['compressed_path'].apply(
-    lambda x: processor.process_compressed_path(x, keys_set)
-)
-combined_df["merged_compressed_path"] = combined_df["processed_compressed_path"].apply(
-    processor.merge_consecutive_nodes
-)
-combined_df['clean_path'] = combined_df['merged_compressed_path'].apply(
-    processor.remove_weights
-)
-combined_df['replace_path'] = combined_df['clean_path'].apply(
-    processor.replace_nodes_with_acronyms
-)
-combined_df = processor.split_path_to_columns(combined_df)
 
-构建代表性路径
+combined_df = processor.process_path_pipeline(combined_df,keys_set)
+
+#构建代表性路径
 unique_pairs = processor.build_representative_paths(
     combined_df, 
     save_progress_path='data/neuron_path_data/example/progress.csv'
 )
 
-添加替换后的路径
+#对代表性路径进行注释
 unique_pairs['replaced_path'] = unique_pairs['path'].apply(
     processor.replace_nodes_with_acronyms
 )
-
 unique_pairs['replaced_start_node'] = unique_pairs['start_node'].apply(
     processor.replace_nodes_with_acronyms
 )
-
 unique_pairs.to_csv('data/neuron_path_data/example/neuron_path_dataunique_pairs_with_paths_partial.csv', index=False)
 ```
 

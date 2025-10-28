@@ -51,24 +51,24 @@ processor = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
 # 处理路径数据
 keys_set = processor.filter_problematic_nodes(directed_df, stl_acro_dict)
 
+combined_df = processor.process_path_pipeline(combined_df,keys_set)
+# combined_df['processed_compressed_path'] = combined_df['compressed_path'].apply(
+#     lambda x: processor.process_compressed_path(x, keys_set)
+# )
 
-combined_df['processed_compressed_path'] = combined_df['compressed_path'].apply(
-    lambda x: processor.process_compressed_path(x, keys_set)
-)
+# combined_df["merged_compressed_path"] = combined_df["processed_compressed_path"].apply(
+#     processor.merge_consecutive_nodes
+# )
 
-combined_df["merged_compressed_path"] = combined_df["processed_compressed_path"].apply(
-    processor.merge_consecutive_nodes
-)
+# combined_df['clean_path'] = combined_df['merged_compressed_path'].apply(
+#     processor.remove_weights
+# )
 
-combined_df['clean_path'] = combined_df['merged_compressed_path'].apply(
-    processor.remove_weights
-)
+# combined_df['replace_path'] = combined_df['clean_path'].apply(
+#     processor.replace_nodes_with_acronyms
+# )
 
-combined_df['replace_path'] = combined_df['clean_path'].apply(
-    processor.replace_nodes_with_acronyms
-)
-
-combined_df = processor.split_path_to_columns(combined_df)
+# combined_df = processor.split_path_to_columns(combined_df)
 
 
 

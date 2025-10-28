@@ -162,6 +162,42 @@ class SWCPathProcessor:
         df['middle_nodes'] = df['clean_path'].apply(get_middle_set)
         return df
     
+    def process_path_pipeline(self, combined_df, keys_set):
+        """
+        整合路径处理流水线 - 将多个处理步骤合并为一步
+        
+        Args:
+            combined_df: 包含压缩路径的DataFrame
+            keys_set: 需要过滤的节点集合
+            
+        Returns:
+            DataFrame: 处理完成的DataFrame
+        """
+        # 步骤1: 处理压缩路径，过滤指定节点
+        combined_df['processed_compressed_path'] = combined_df['compressed_path'].apply(
+            lambda x: self.process_compressed_path(x, keys_set)
+        )
+        
+        # 步骤2: 合并连续相同节点
+        combined_df["merged_compressed_path"] = combined_df["processed_compressed_path"].apply(
+            self.merge_consecutive_nodes
+        )
+        
+        # 步骤3: 清理路径权重信息
+        combined_df['clean_path'] = combined_df['merged_compressed_path'].apply(
+            self.remove_weights
+        )
+        
+        # 步骤4: 替换节点ID为缩写名称
+        combined_df['replace_path'] = combined_df['clean_path'].apply(
+            self.replace_nodes_with_acronyms
+        )
+        
+        # 步骤5: 拆分路径为列格式
+        combined_df = self.split_path_to_columns(combined_df)
+        
+        return combined_df
+
     @staticmethod
     def build_path_with_minimal_data(df, start, end):
         """
@@ -200,103 +236,90 @@ class SWCPathProcessor:
                     continue
         
         return "", 0
-
+    
     def build_representative_paths(self, combined_df, save_progress_path=None):
         """
-        为所有唯一的起点-终点对构建代表性路径
+        为所有唯一的起点-终点对构建代表性路径（带断点续传功能）
         
         Args:
-            combined_df: 已经拆分好的DataFrame（包含start_node, end_node, middle_nodes等列）
+            combined_df: 包含所有路径数据的DataFrame
             save_progress_path: 进度保存路径
             
         Returns:
             DataFrame: 包含代表性路径的结果
         """
-        if save_progress_path is None:
-            save_progress_path = 'data/progress.csv'
+        # 拆分路径为列
+        df_with_nodes = self.split_path_to_columns(combined_df)
+        unique_pairs = df_with_nodes[['start_node', 'end_node']].drop_duplicates().reset_index(drop=True)
         
-        # 如果进度文件不存在，先创建并初始化
-        if not os.path.exists(save_progress_path):
-            print("创建新的进度文件...")
-            # 直接从combined_df中提取唯一对
-            unique_pairs = combined_df[['start_node', 'end_node']].drop_duplicates().reset_index(drop=True)
-            
-            # 确保节点类型为字符串，处理空值
-            unique_pairs['start_node'] = unique_pairs['start_node'].apply(
-                lambda x: str(x) if pd.notna(x) else ""
-            )
-            unique_pairs['end_node'] = unique_pairs['end_node'].apply(
-                lambda x: str(x) if pd.notna(x) else ""
-            )
-            
-            # 初始化结果列
-            unique_pairs['path'] = ""
-            unique_pairs['path_length'] = 0
-            unique_pairs['edges_used'] = 0
-            
-            # 保存初始化结果
-            unique_pairs.to_csv(save_progress_path, index=False)
-            print(f"初始化完成: 共找到 {len(unique_pairs)} 个路径对")
-        else:
-            # 如果进度文件存在，直接加载
-            print(f"从断点继续: {save_progress_path}")
-            unique_pairs = pd.read_csv(save_progress_path, keep_default_na=False)
-            # 确保节点类型为字符串，并去除小数点，处理空值
-            unique_pairs['start_node'] = unique_pairs['start_node'].apply(
-                lambda x: str(x).replace('.0', '') if pd.notna(x) and x != "" else ""
-            )
-            unique_pairs['end_node'] = unique_pairs['end_node'].apply(
-                lambda x: str(x).replace('.0', '') if pd.notna(x) and x != "" else ""
-            )
+        # 初始化结果列
+        unique_pairs['path'] = ""
+        unique_pairs['path_length'] = 0
+        unique_pairs['edges_used'] = 0
         
-        # 确保combined_df中的节点类型也是字符串，处理空值
-        combined_df['start_node'] = combined_df['start_node'].apply(
-            lambda x: str(x) if pd.notna(x) else ""
-        )
-        combined_df['end_node'] = combined_df['end_node'].apply(
-            lambda x: str(x) if pd.notna(x) else ""
-        )
+        # 断点续传：检查是否有已保存的进度
+        processed_count = 0
+        if save_progress_path and os.path.exists(save_progress_path):
+            try:
+                progress_df = pd.read_csv(save_progress_path)
+                
+                # 创建进度字典，键为(start_node, end_node)，值为整行数据
+                progress_dict = {}
+                for _, row in progress_df.iterrows():
+                    key = (str(row['start_node']), str(row['end_node']))
+                    progress_dict[key] = row
+                
+                # 更新当前结果并计数已处理的数量
+                for idx in range(len(unique_pairs)):
+                    row = unique_pairs.loc[idx]
+                    key = (str(row['start_node']), str(row['end_node']))
+                    
+                    if key in progress_dict:
+                        progress_row = progress_dict[key]
+                        # 更严格的判断：只有当有非空且有效的路径字符串时才更新
+                        if (pd.notna(progress_row['path']) and 
+                            progress_row['path'].strip() and 
+                            progress_row['path'] not in ["No paths found", "No valid edges"]):
+                            unique_pairs.at[idx, 'path'] = progress_row['path']
+                            unique_pairs.at[idx, 'path_length'] = progress_row.get('path_length', 0)
+                            unique_pairs.at[idx, 'edges_used'] = progress_row.get('edges_used', 0)
+                            processed_count += 1
+                
+                print(f"从断点继续: 已处理 {processed_count} 个路径对")
+                
+            except Exception as e:
+                print(f"加载进度文件失败，将从头开始: {e}")
         
+        # 处理每个起点-终点对
         total_pairs = len(unique_pairs)
         
-        # 计算已处理的数量 - 只要path不是空字符串就认为是已处理
-        processed_count = 0
-        for i in range(total_pairs):
-            if pd.notna(unique_pairs.loc[i, 'path']) and unique_pairs.loc[i, 'path'] != "":
-                processed_count += 1
-        
-        print(f"已处理 {processed_count} 个路径对，剩余 {total_pairs - processed_count} 个待处理")
-        
-        # 如果没有需要处理的路径对，直接返回
-        if processed_count == total_pairs:
-            print("所有路径对已处理完成")
-            return unique_pairs
-        
-        # 创建需要处理的索引列表
+        # 创建一个列表来跟踪需要处理的行索引
         indices_to_process = []
-        for i in range(total_pairs):
-            if pd.isna(unique_pairs.loc[i, 'path']) or unique_pairs.loc[i, 'path'] == "":
-                indices_to_process.append(i)
-        
-        # 使用tqdm进度条处理需要处理的行
-        for i in tqdm(indices_to_process, desc="构建代表性路径", total=len(indices_to_process)):
-            start_node = unique_pairs.loc[i, 'start_node']
-            end_node = unique_pairs.loc[i, 'end_node']
+        for idx in range(total_pairs):
+            row = unique_pairs.loc[idx]
             
-            # 如果节点为空，跳过
-            if start_node == "" or end_node == "":
-                unique_pairs.at[i, 'path'] = "Invalid nodes"
-                processed_count += 1
-                continue
-                
-            # 筛选目标路径 - 直接使用已经拆分好的combined_df
-            target_paths = combined_df[
-                (combined_df['start_node'] == start_node) & 
-                (combined_df['end_node'] == end_node)
+            # 检查是否需要处理这一行
+            if not (pd.notna(row['path']) and 
+                    row['path'].strip() and 
+                    row['path'] not in ["No paths found", "No valid edges"]):
+                indices_to_process.append(idx)
+        
+        print(f"需要处理 {len(indices_to_process)} 个路径对")
+        
+        # 使用tqdm处理需要处理的行，初始值设为已处理的数量
+        for idx in tqdm(indices_to_process, desc="构建代表性路径", initial=processed_count, total=total_pairs):
+            row = unique_pairs.loc[idx]
+            start_node = str(row['start_node'])
+            end_node = str(row['end_node'])
+            
+            # 筛选目标路径
+            target_paths = df_with_nodes[
+                (df_with_nodes['start_node'] == start_node) & 
+                (df_with_nodes['end_node'] == end_node)
             ].copy()
             
             if len(target_paths) == 0:
-                unique_pairs.at[i, 'path'] = "No paths found"
+                unique_pairs.at[idx, 'path'] = "No paths found"
                 processed_count += 1
             else:
                 # 准备中间节点并去重
@@ -317,7 +340,7 @@ class SWCPathProcessor:
                     node_pairs.extend(pairs)
                 
                 if len(node_pairs) == 0:
-                    unique_pairs.at[i, 'path'] = "No valid edges"
+                    unique_pairs.at[idx, 'path'] = "No valid edges"
                     processed_count += 1
                 else:
                     pair_counter = Counter(node_pairs)
@@ -328,35 +351,19 @@ class SWCPathProcessor:
                     path_str, edges_used = self.build_path_with_minimal_data(pair_freq_df, start_node, end_node)
                     
                     # 保存结果
-                    unique_pairs.at[i, 'path'] = path_str
-                    unique_pairs.at[i, 'edges_used'] = edges_used
-                    unique_pairs.at[i, 'path_length'] = len(path_str.split('→')) - 1 if path_str else 0
+                    unique_pairs.at[idx, 'path'] = path_str
+                    unique_pairs.at[idx, 'edges_used'] = edges_used
+                    unique_pairs.at[idx, 'path_length'] = len(path_str.split('→')) - 1 if path_str else 0
                     processed_count += 1
             
-            # 定期保存进度
-            if save_progress_path and (processed_count % 10 == 0 or processed_count == total_pairs):
-                # 确保保存时节点类型为字符串，处理空值
-                save_df = unique_pairs.copy()
-                save_df['start_node'] = save_df['start_node'].apply(
-                    lambda x: str(x) if pd.notna(x) else ""
-                )
-                save_df['end_node'] = save_df['end_node'].apply(
-                    lambda x: str(x) if pd.notna(x) else ""
-                )
-                save_df.to_csv(save_progress_path, index=False)
+            # 定期保存进度（每100个对或最后一个对）
+            if save_progress_path and (processed_count % 100 == 0 or processed_count == total_pairs):
+                unique_pairs.to_csv(save_progress_path, index=False)
                 print(f"进度已保存: 已处理 {processed_count}/{total_pairs} 个路径对")
         
-        # 最终保存一次
+        # 最终保存一次，确保数据完整
         if save_progress_path:
-            # 确保保存时节点类型为字符串，处理空值
-            save_df = unique_pairs.copy()
-            save_df['start_node'] = save_df['start_node'].apply(
-                lambda x: str(x) if pd.notna(x) else ""
-            )
-            save_df['end_node'] = save_df['end_node'].apply(
-                lambda x: str(x) if pd.notna(x) else ""
-            )
-            save_df.to_csv(save_progress_path, index=False)
+            unique_pairs.to_csv(save_progress_path, index=False)
             print(f"最终结果已保存: 共处理 {total_pairs} 个路径对")
         
         return unique_pairs
