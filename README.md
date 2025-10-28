@@ -70,6 +70,8 @@ unique_pairs['replaced_start_node'] = unique_pairs['start_node'].apply(
     processor.replace_nodes_with_acronyms
 )
 unique_pairs.to_csv('data/neuron_path_data/example/neuron_path_dataunique_pairs_with_paths_partial.csv', index=False)
+
+
 ```
 
 
@@ -132,6 +134,16 @@ final_results = fusion_processor.integrate_paths_with_intensity(
     min_path_length=5
 )
 
+#基因表达数据整理好放在了data/gene目录下
+#横坐标是区域，纵坐标是基因名，如果有新数据集可按照这个格式进行编辑
+#训练数据构建
+
+
+
+
+
+
+
 ```
 
 
@@ -147,5 +159,10 @@ final_results = fusion_processor.integrate_paths_with_intensity(
 - 五折交叉验证
 - 梯度重要性分析
 - 连接强度预测
+
+```python
+#考虑到后续模型训练可选择方式多样，详细步骤放在model.py当中以供查阅
+```
+
 
 
