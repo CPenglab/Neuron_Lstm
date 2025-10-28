@@ -96,6 +96,61 @@ unique_pairs.to_csv('data/neuron_path_data/example/neuron_path_dataunique_pairs_
 - 数据标准化处理
 - 训练/验证集分割
 
+
+
+```python
+下载数据
+AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
+
+AllenData.download_Allen_files(  
+    csv_file_path='data/experiment/url.csv',
+    download_dir='data/experiment/injection_fraction',
+    image_type="injection_fraction"
+)
+
+AllenData.download_Allen_files(  
+    csv_file_path='data/experiment/url.csv',
+    download_dir='data/experiment/projection_density',
+    image_type="projection_density"
+)
+
+
+# 初始化融合器
+fusion_processor = AllenDataFusion(anno, allen_brain_tree, stl_acro_dict)
+
+批量处理实验数据（顺序版本）
+results_df = fusion_processor.batch_process_experiments_sequential(
+    experiment_ids=id_list,
+    annot_labeled=annot_labeled,
+    area_masks=area_masks,
+    valid_areas=valid_areas,
+    base_dir="data/experiment/example",
+    output_dir="data/experiment/example/result",
+    use_projection_density=True  # 使用投影密度
+)
+
+
+
+
+加载和预处理Allen数据
+allen_data = fusion_processor.load_and_preprocess_allen_data(
+    'data/experiment/merged_results.csv'
+)
+
+与路径数据融合
+final_results = fusion_processor.integrate_paths_with_intensity(
+    unique_pairs,  # 来自前一步的代表性路径
+    ipsi_processed,
+    min_path_length=5
+)
+
+```
+
+
+
+
+
+
 ### 4. 🧠 LSTM模型训练与预测
 构建序列模型预测脑区连接强度
 
