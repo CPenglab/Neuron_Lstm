@@ -78,15 +78,16 @@ unique_pairs.to_csv('data/neuron_path_data/example/neuron_path_dataunique_pairs_
 将特征路径与实验投射强度数据结合
 
 **功能特点**：
-- 基因表达数据整合
+- Allen数据下载
 - 投射强度标签对齐
+- 基因表达数据整合
 - 数据标准化处理
 - 训练/验证集分割
 
 
 
 ```python
-下载数据
+#下载数据,这里只下载了10例数据左右作为示范
 AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
 
 AllenData.download_Allen_files(  
@@ -119,12 +120,12 @@ results_df = fusion_processor.batch_process_experiments_sequential(
 
 
 
-加载和预处理Allen数据
+#加载和预处理Allen数据，这里我们提供了2992完整的处理后数据
 allen_data = fusion_processor.load_and_preprocess_allen_data(
     'data/experiment/merged_results.csv'
 )
 
-与路径数据融合
+#将实验数据与神经元路径信息数据融合
 final_results = fusion_processor.integrate_paths_with_intensity(
     unique_pairs,  # 来自前一步的代表性路径
     ipsi_processed,
