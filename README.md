@@ -16,6 +16,14 @@
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
 resolution = 25  
 batch_processor = BatchSWCProcessor(anno, resolution)
+
+创建批量处理器
+batch_processor = BatchSWCProcessor(anno, resolution)
+
+处理所有数据
+root_path = "data/orig_swc_data/test/unzip/"
+results = batch_processor.process_batch_folders(root_path)
+
 ```
 
 
