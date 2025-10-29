@@ -1,15 +1,17 @@
 from core.swc_processor import BatchSWCProcessor
 from core.feature_integrator import SWCPathProcessor
 from core.data_fusion import AllenDataFusion
+from core.model import SequenceDataProcessor
 import pandas as pd
 import pyswcloader
 import numpy as np
 
 import importlib
 import core
-import core.data_fusion
+
 importlib.reload(core.data_fusion)
 importlib.reload(core.feature_integrator)
+importlib.reload(core.model)
 
 #############swc_processor
 # 加载注解数据
@@ -52,23 +54,6 @@ processor = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
 keys_set = processor.filter_problematic_nodes(directed_df, stl_acro_dict)
 
 combined_df = processor.process_path_pipeline(combined_df,keys_set)
-# combined_df['processed_compressed_path'] = combined_df['compressed_path'].apply(
-#     lambda x: processor.process_compressed_path(x, keys_set)
-# )
-
-# combined_df["merged_compressed_path"] = combined_df["processed_compressed_path"].apply(
-#     processor.merge_consecutive_nodes
-# )
-
-# combined_df['clean_path'] = combined_df['merged_compressed_path'].apply(
-#     processor.remove_weights
-# )
-
-# combined_df['replace_path'] = combined_df['clean_path'].apply(
-#     processor.replace_nodes_with_acronyms
-# )
-
-# combined_df = processor.split_path_to_columns(combined_df)
 
 
 
@@ -89,11 +74,9 @@ unique_pairs['replaced_path'] = unique_pairs['path'].apply(
     processor.replace_nodes_with_acronyms
 )
 
-unique_pairs['replaced_start_node'] = unique_pairs['start_node'].apply(
-    processor.replace_nodes_with_acronyms
-)
+unique_pairs['replaced_start_node'] = unique_pairs['replaced_path'].str.split('→').str[0]
 
-unique_pairs.to_csv('data/neuron_path_data/example/neuron_path_dataunique_pairs_with_paths_partial.csv', index=False)
+unique_pairs.to_csv('data/neuron_path_data/example/result.csv', index=False)
 
 
 ######下载数据
@@ -140,7 +123,10 @@ results_df = fusion_processor.batch_process_experiments_sequential(
 
 
 
-unique_pairs = pd.read_csv('unique_pairs_with_paths_partial.csv',encoding='gbk')
+
+
+unique_pairs = pd.read_csv('data/neuron_path_data/zip_fold/result.csv')
+
 
 # 1. 加载和预处理Allen数据
 allen_data = fusion_processor.load_and_preprocess_allen_data(
@@ -171,7 +157,62 @@ final_results = fusion_processor.integrate_paths_with_intensity(
 )
 
 # 保存结果
-final_results.to_csv('/path/to/final_results.csv', index=False)
+final_results.to_csv('data/model/final_results.csv', index=False)
+
+final_results = pd.read_csv('data/model/final_results.csv')
+
+
+
+
+###model
+# 使用示例
+# 初始化处理器
+processor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
+
+# 加载和准备数据
+X, y_log, max_len, pca = processor.load_and_prepare_data('data/model/final_results.csv', window_size=5)
+
+# 分割数据
+node_train, node_test, strength_train, strength_test = processor.split_data(X, y_log)
+
+# 准备最终数据
+gene_train, gene_test, init_strength_train, init_strength_test, strength_train_shift, strength_test_shift = processor.prepare_final_data(
+    node_train, node_test, strength_train, strength_test, max_len
+)
+
+# 构建模型
+model = processor.build_true_autoregressive_model_with_k(max_len=5,gene_embed_dim=64)
+
+# 训练模型（使用内置回调）
+r2_callback = processor.MultiInputR2ScoreCallback(
+    validation_data=([gene_test, init_strength_test], strength_test_shift)
+)
+
+history = model.fit(
+    [gene_train, init_strength_train],
+    strength_train_shift,
+    validation_data=([gene_test, init_strength_test], strength_test_shift),
+    epochs=50,
+    batch_size=32,
+    callbacks=[r2_callback]
+)
+
+# 获取PCA进行特征分析
+pca = processor.get_pca()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
