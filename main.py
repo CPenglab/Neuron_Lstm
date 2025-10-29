@@ -69,17 +69,17 @@ unique_pairs.to_csv('data/neuron_path_data/example/result.csv', index=False)
 
 ############# data_fusion
 ###### Download data
-AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
+AllenData = AllenDataFusion(anno,allen_brain_tree, stl_acro_dict)
 
 AllenData.download_Allen_files(  
     csv_file_path='data/experiment/url.csv',
-    download_dir='data/experiment/injection_fraction',
+    download_dir='data/experiment/example/injection_fraction',
     image_type="injection_fraction"
 )
 
 AllenData.download_Allen_files(  
     csv_file_path='data/experiment/url.csv',
-    download_dir='data/experiment/projection_density',
+    download_dir='data/experiment/example/projection_density',
     image_type="projection_density"
 )
 
@@ -150,7 +150,7 @@ final_results.to_csv('data/model/final_results.csv', index=False)
 processor_SequenceDataProcessor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
 
 # Load and prepare data
-X, y_log, max_len, pca = processor_SequenceDataProcessor.load_and_prepare_data('data/model/final_results.csv', window_size=3)
+X, y_log, max_len, pca = processor_SequenceDataProcessor.load_and_prepare_data('data/model/final_results.csv', window_size=5)
 
 # Split data
 node_train, node_test, strength_train, strength_test = processor_SequenceDataProcessor.split_data(X, y_log)
@@ -161,7 +161,7 @@ gene_train, gene_test, init_strength_train, init_strength_test, strength_train_s
 )
 
 # Build model
-model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=3, gene_embed_dim=64)
+model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=5, gene_embed_dim=64)
 
 # Train model (using built-in callback)
 r2_callback = processor_SequenceDataProcessor.MultiInputR2ScoreCallback(

@@ -10,15 +10,15 @@ from pyswcloader import brain
 import nrrd
 
 class AllenDataFusion:
-    """Allen实验数据融合器 - 处理Allen实验数据与路径数据的融合"""
+    """Allen Experimental Data Fusion - Processes Allen experimental data and path data fusion"""
     
     def __init__(self, anno, allen_brain_tree, stl_acro_dict):
         """
-        初始化融合器
+        Initialize fusion processor
         
         Args:
-            allen_brain_tree: 脑区树结构
-            stl_acro_dict: 缩写字典
+            allen_brain_tree: Brain region tree structure
+            stl_acro_dict: Abbreviation dictionary
         """
         self.allen_brain_tree = allen_brain_tree
         self.stl_acro_dict = stl_acro_dict
@@ -26,20 +26,20 @@ class AllenDataFusion:
     
     def load_and_preprocess_allen_data(self, file_path):
         """
-        加载和预处理Allen实验数据
+        Load and preprocess Allen experimental data
         
         Args:
-            file_path: Allen数据文件路径
+            file_path: Allen data file path
             
         Returns:
-            DataFrame: 预处理后的数据
+            DataFrame: Preprocessed data
         """
         file = pd.read_csv(file_path)
         
-        # 选择数值列，排除非数值列
+        # Select numeric columns, exclude non-numeric columns
         numeric_cols = file.columns.difference(["experiment_id", "injection_position", "_meta"])
         
-        # 按实验ID和注射位置分组求均值
+        # Group by experiment ID and injection position to calculate mean
         merged_df = file.groupby(["experiment_id", "injection_position"])[numeric_cols].mean().reset_index()
         merged_df = merged_df[merged_df['injection_position'] != 'unknown']
         
@@ -47,15 +47,15 @@ class AllenDataFusion:
     
     def create_ipsi_contra_matrices(self, merged_df):
         """
-        创建同侧和对侧投射矩阵
+        Create ipsilateral and contralateral projection matrices
         
         Args:
-            merged_df: 预处理后的Allen数据
+            merged_df: Preprocessed Allen data
             
         Returns:
-            tuple: (同侧矩阵, 对侧矩阵)
+            tuple: (ipsilateral matrix, contralateral matrix)
         """
-        # 分离左侧和右侧注射位置
+        # Separate left and right injection positions
         left_positions = merged_df[merged_df['injection_position'].str.endswith('_left')]
         right_positions = merged_df[merged_df['injection_position'].str.endswith('_right')]
         
@@ -63,16 +63,16 @@ class AllenDataFusion:
         right_matrix = right_positions.set_index('injection_position')
         
         def split_columns_by_suffix(matrix, suffix):
-            """筛选列名以指定后缀结尾的列"""
+            """Filter columns ending with specified suffix"""
             return matrix.loc[:, matrix.columns.str.endswith(suffix)]
         
-        # 分离不同侧别的列
+        # Separate columns by side
         left_matrix_left = split_columns_by_suffix(left_matrix, '_left')
         left_matrix_right = split_columns_by_suffix(left_matrix, '_right')
         right_matrix_left = split_columns_by_suffix(right_matrix, '_left')
         right_matrix_right = split_columns_by_suffix(right_matrix, '_right')
         
-        # 清理列名和索引
+        # Clean column names and indices
         right_matrix_right.columns = right_matrix_right.columns.str.replace('_right', '')
         right_matrix_right.index = right_matrix_right.index.str.replace('_right', '')
         left_matrix_left.columns = left_matrix_left.columns.str.replace('_left', '')
@@ -82,7 +82,7 @@ class AllenDataFusion:
         left_matrix_right.columns = left_matrix_right.columns.str.replace('_right', '')
         left_matrix_right.index = left_matrix_right.index.str.replace('_left', '')
         
-        # 合并同侧和对侧矩阵
+        # Merge ipsilateral and contralateral matrices
         ipsi_matrix = pd.concat([left_matrix_left, right_matrix_right])
         contra_matrix = pd.concat([right_matrix_left, left_matrix_right])
         
@@ -90,20 +90,20 @@ class AllenDataFusion:
     
     def filter_matrix_nodes(self, matrix, keys_to_remove):
         """
-        过滤矩阵中的指定节点
+        Filter specified nodes from matrix
         
         Args:
-            matrix: 要过滤的矩阵
-            keys_to_remove: 要移除的节点列表
+            matrix: Matrix to filter
+            keys_to_remove: List of nodes to remove
             
         Returns:
-            DataFrame: 过滤后的矩阵
+            DataFrame: Filtered matrix
         """
         keys_str = [str(k) for k in keys_to_remove]
         filtered_matrix = matrix.drop(index=keys_str, errors='ignore') \
                               .drop(columns=keys_str, errors='ignore')
         
-        # 替换行列名为缩写名称
+        # Replace row and column names with abbreviation names
         filtered_matrix.index = filtered_matrix.index.map(
             lambda x: self.stl_acro_dict.get(int(x), x) if str(x).isdigit() else x
         )
@@ -115,23 +115,23 @@ class AllenDataFusion:
     
     def create_hierarchical_matrix(self, matrix):
         """
-        创建层次化矩阵（按父节点分组）
+        Create hierarchical matrix (grouped by parent node)
         
         Args:
-            matrix: 原始矩阵
+            matrix: Original matrix
             
         Returns:
-            DataFrame: 层次化矩阵
+            DataFrame: Hierarchical matrix
         """
-        # 获取叶子节点及其父节点
+        # Get leaf nodes and their parent nodes
         leaf_nodes_data = self._get_leaf_nodes_with_parents()
         node_parent_df = pd.DataFrame(leaf_nodes_data, columns=['node', 'parentnode'])
         
-        # 替换为缩写名称
+        # Replace with abbreviation names
         node_parent_df['node'] = node_parent_df['node'].replace(self.stl_acro_dict)
         node_parent_df['parentnode'] = node_parent_df['parentnode'].replace(self.stl_acro_dict)
         
-        # 创建列层次结构
+        # Create column hierarchy
         column_to_parent = dict(zip(node_parent_df['node'], node_parent_df['parentnode']))
         column_names = matrix.columns.tolist()
         parent_names = [column_to_parent.get(col, "root") for col in column_names]
@@ -144,12 +144,12 @@ class AllenDataFusion:
         matrix_with_parents = matrix.copy()
         matrix_with_parents.columns = multi_columns
         
-        # 排序
+        # Sort
         matrix_sorted = matrix_with_parents.sort_index(
             axis=1, level="Parent", sort_remaining=True
         )
         
-        # 添加行父节点并排序
+        # Add row parent nodes and sort
         row_to_parent = dict(zip(node_parent_df['node'], node_parent_df['parentnode']))
         row_parents = [row_to_parent.get(row, "root") for row in matrix_sorted.index]
         matrix_sorted.insert(0, "parent_node", row_parents)
@@ -159,11 +159,11 @@ class AllenDataFusion:
         return matrix_final
     
     def _get_leaf_nodes_with_parents(self):
-        """获取叶子节点及其父节点信息"""
+        """Get leaf nodes and their parent node information"""
         leaf_nodes_data = []
         
         for node in self.allen_brain_tree.all_nodes():
-            if len(self.allen_brain_tree.children(node.identifier)) == 0:  # 叶子节点
+            if len(self.allen_brain_tree.children(node.identifier)) == 0:  # Leaf node
                 parent_node = self.allen_brain_tree.parent(node.identifier)
                 parent_node_id = parent_node.identifier if parent_node else None
                 leaf_nodes_data.append([node.identifier, parent_node_id])
@@ -172,31 +172,31 @@ class AllenDataFusion:
     
     def filter_and_normalize_matrix(self, matrix, percentile=75):
         """
-        过滤和归一化矩阵
+        Filter and normalize matrix
         
         Args:
-            matrix: 原始矩阵
-            percentile: 百分位数阈值
+            matrix: Original matrix
+            percentile: Percentile threshold
             
         Returns:
-            DataFrame: 处理后的矩阵
+            DataFrame: Processed matrix
         """
-        # 提取数值部分（排除父节点列）
+        # Extract numeric part (exclude parent node column)
         numeric_matrix = matrix.iloc[:, 1:] if 'parent_node' in matrix.columns else matrix
         
         def keep_above_percentile(row, percentile):
-            """保留大于指定分位数的值"""
+            """Keep values above specified percentile"""
             threshold = np.percentile(row, percentile)
             new_row = row.copy()
             new_row[row < threshold] = 0
             return new_row
         
-        # 过滤低值
+        # Filter low values
         result_filtered = numeric_matrix.apply(
             keep_above_percentile, axis=1, percentile=percentile
         )
         
-        # 相同注射点取均值
+        # Take mean for same injection points
         # result_filtered.insert(0, "parent_node", matrix["parent_node"])
 
         result_filtered_mean = result_filtered.groupby('injection_position').mean()
@@ -205,17 +205,17 @@ class AllenDataFusion:
     
     def integrate_paths_with_intensity(self, unique_pairs_df, intensity_matrix, min_path_length=5):
         """
-        将路径数据与强度矩阵融合
+        Integrate path data with intensity matrix
         
         Args:
-            unique_pairs_df: 代表性路径数据
-            intensity_matrix: 强度矩阵
-            min_path_length: 最小路径长度
+            unique_pairs_df: Representative path data
+            intensity_matrix: Intensity matrix
+            min_path_length: Minimum path length
             
         Returns:
-            DataFrame: 融合后的数据
+            DataFrame: Integrated data
         """
-        # 获取有效的注射位置
+        # Get valid injection positions
         unique_start_nodes = unique_pairs_df['replaced_start_node'].unique()
         
         def replace_node_id(node_id):
@@ -230,31 +230,31 @@ class AllenDataFusion:
         replaced_nodes = np.array([replace_node_id(node) for node in unique_start_nodes])
         valid_injection_positions = set(replaced_nodes) - {'Unknown'}
         
-        # 过滤强度矩阵
+        # Filter intensity matrix
         filtered_matrix = intensity_matrix.loc[
             intensity_matrix.index.isin(valid_injection_positions)
         ]
         
-        # 按注射位置分组求均值
+        # Calculate mean by injection position
         filtered_matrix_mean = filtered_matrix.groupby(filtered_matrix.index).mean()
         
         result_matrix = []
         
-        # 处理每个实验
+        # Process each experiment
         for exp_idx, exp_row in tqdm(filtered_matrix_mean.iterrows(), 
                                 total=len(filtered_matrix_mean), 
-                                desc="处理实验中"):
+                                desc="Processing experiments"):
             
             injection_position = exp_idx[0] if isinstance(exp_idx, tuple) else exp_idx
             experiment_id = f"{exp_idx[0]}_{exp_idx[1]}" if isinstance(exp_idx, tuple) else str(exp_idx)
             
-            # 匹配路径
+            # Match paths
             matched_paths = unique_pairs_df[unique_pairs_df['replaced_start_node'] == injection_position]
             
             if matched_paths.empty:
                 continue
             
-            # 处理每条匹配路径
+            # Process each matched path
             for _, path_row in matched_paths.iterrows():
                 path_regions = path_row['replaced_path'].split('→')
                 
@@ -269,7 +269,7 @@ class AllenDataFusion:
                 
                 valid_path = True
                 
-                # 添加注射位置自身强度
+                # Add injection position's own intensity
                 injection_cols = [col for col in filtered_matrix_mean.columns 
                                 if col[1] == injection_position]
                 if injection_cols:
@@ -279,7 +279,7 @@ class AllenDataFusion:
                 else:
                     valid_path = False
                 
-                # 计算路径上其他脑区的强度
+                # Calculate intensity for other brain regions on the path
                 for region in path_regions[1:]:
                     region_cols = [col for col in filtered_matrix_mean.columns 
                                 if col[1] == region]
@@ -292,7 +292,7 @@ class AllenDataFusion:
                         valid_path = False
                         break
                 
-                # 如果路径有效，计算总强度
+                # If path is valid, calculate total intensity
                 if valid_path and len(path_info['intensity_sequence']) == len(path_regions):
                     path_info['total_intensity'] = np.prod(path_info['intensity_sequence'])
                     path_info['region_intensities'] = " → ".join(path_info['region_intensities'])
@@ -301,36 +301,36 @@ class AllenDataFusion:
         if not result_matrix:
             return pd.DataFrame()
         
-        # 创建DataFrame时明确指定数据类型
+        # Create DataFrame with explicit data types
         results_df = pd.DataFrame(result_matrix, copy=True)
         results_df = results_df[['experiment_id', 'injection_position', 'path',
                                 'path_length', 'region_intensities', 'total_intensity']]
         
-        # 进一步过滤
+        # Further filtering
         filtered_results = self._filter_final_results(results_df, min_path_length)
         
         return filtered_results
     
     def _filter_final_results(self, results_df, min_path_length):
-        """过滤最终结果 - 修复版本"""
-        # 按路径长度过滤，使用.copy()避免SettingWithCopyWarning
+        """Filter final results - fixed version"""
+        # Filter by path length, use .copy() to avoid SettingWithCopyWarning
         filtered = results_df[results_df['path_length'] >= min_path_length].copy()
         
-        # 使用.loc添加新列
+        # Use .loc to add new column
         filtered.loc[:, 'strength'] = filtered['region_intensities'].apply(
             lambda x: [float(i.split(':')[1]) for i in x.split('→')]
         )
         
-        # 移除包含零强度的路径，再次使用.copy()
+        # Remove paths containing zero intensity, use .copy() again
         zero_mask = filtered['strength'].apply(lambda x: all(val != 0 for val in x))
         filtered = filtered[zero_mask].copy()
         
-        # 清理列
+        # Clean columns
         columns_to_drop = [col for col in ['experiment_id', 'region_intensities', 'total_intensity'] 
                         if col in filtered.columns]
         filtered = filtered.drop(columns_to_drop, axis=1)
         
-        # 添加起始点和终止点
+        # Add start and end points
         filtered.loc[:, 'start'] = filtered['path'].apply(
             lambda x: x.split('→')[0] if '→' in x else x
         )
@@ -351,53 +351,53 @@ class AllenDataFusion:
         image_type="injection_fraction", 
         resolution=25):
         """
-        从Allen Brain Atlas API批量下载injection_fraction文件
+        Batch download injection_fraction files from Allen Brain Atlas API
         
         Args:
-            csv_file_path (str): 包含实验ID的CSV文件路径
-            download_dir (str): 文件下载保存目录
-            id_column (str): CSV文件中包含实验ID的列名，默认为'id'
-            max_retries (int): 最大重试次数，默认为3
-            min_file_size (int): 最小文件大小阈值（字节），默认为1024
-            base_url (str): API基础URL，默认为"http://api.brain-map.org/grid_data/download_file"
-            image_type (str): 图像类型，默认为'injection_fraction',或选择'projection_density'
-            resolution (int): 分辨率，默认为25
+            csv_file_path (str): CSV file path containing experiment IDs
+            download_dir (str): Directory to save downloaded files
+            id_column (str): Column name in CSV containing experiment IDs, default 'id'
+            max_retries (int): Maximum retry attempts, default 3
+            min_file_size (int): Minimum file size threshold (bytes), default 1024
+            base_url (str): API base URL, default "http://api.brain-map.org/grid_data/download_file"
+            image_type (str): Image type, default 'injection_fraction', or choose 'projection_density'
+            resolution (int): Resolution, default 25
             
         Returns:
-            tuple: (成功下载的ID列表, 失败下载的ID列表)
+            tuple: (List of successfully downloaded IDs, List of failed download IDs)
         """
-        # 读取CSV文件
+        # Read CSV file
         try:
             df = pd.read_csv(csv_file_path)
             experiment_ids = df[id_column].tolist()
-            print(f"成功读取CSV文件，找到 {len(experiment_ids)} 个实验ID")
+            print(f"Successfully read CSV file, found {len(experiment_ids)} experiment IDs")
         except Exception as e:
-            print(f"读取CSV文件失败: {str(e)}")
+            print(f"Failed to read CSV file: {str(e)}")
             return [], []
         
-        # 创建保存目录
+        # Create save directory
         os.makedirs(download_dir, exist_ok=True)
         
         def download_single_file(exp_id, retries=max_retries):
-            """下载单个文件"""
+            """Download single file"""
             url = f"{base_url}/{exp_id}?image={image_type}&resolution={resolution}"
             file_path = os.path.join(download_dir, f"{exp_id}_{image_type}.nrrd")
             
             for attempt in range(retries):
                 try:
-                    # 第一次请求获取文件大小
+                    # First request to get file size
                     with requests.get(url, stream=True) as r:
                         r.raise_for_status()
                         total_size = int(r.headers.get('content-length', 0))
                         
-                        # 检查文件是否已存在且大小匹配
+                        # Check if file already exists and size matches
                         if os.path.exists(file_path):
                             existing_size = os.path.getsize(file_path)
                             if total_size > 0 and existing_size == total_size:
-                                print(f"✓ 文件已存在且完整: {exp_id}")
+                                print(f"✓ File already exists and is complete: {exp_id}")
                                 return True
                         
-                        # 开始下载
+                        # Start download
                         downloaded_size = 0
                         with open(file_path, "wb") as f:
                             for chunk in r.iter_content(chunk_size=8192):
@@ -405,54 +405,54 @@ class AllenDataFusion:
                                     f.write(chunk)
                                     downloaded_size += len(chunk)
                         
-                        # 下载后验证
+                        # Verify after download
                         if total_size > 0 and downloaded_size != total_size:
-                            raise Exception(f"文件大小不匹配: 期望 {total_size} 字节, 实际 {downloaded_size} 字节")
+                            raise Exception(f"File size mismatch: expected {total_size} bytes, got {downloaded_size} bytes")
                         
-                        # 检查文件是否大于最小阈值
+                        # Check if file is larger than minimum threshold
                         if os.path.getsize(file_path) < min_file_size:
-                            raise Exception(f"文件过小，可能下载不完整: 仅 {os.path.getsize(file_path)} 字节")
+                            raise Exception(f"File too small, possibly incomplete: only {os.path.getsize(file_path)} bytes")
                         
-                        print(f"✓ 下载成功: {exp_id} -> {file_path}")
+                        print(f"✓ Download successful: {exp_id} -> {file_path}")
                         return True
                         
                 except Exception as e:
-                    print(f"✗ 尝试 {attempt + 1}/{retries} 失败 {exp_id}: {str(e)}")
+                    print(f"✗ Attempt {attempt + 1}/{retries} failed {exp_id}: {str(e)}")
                     if os.path.exists(file_path):
-                        os.remove(file_path)  # 删除不完整的文件
+                        os.remove(file_path)  # Delete incomplete file
                     if attempt < retries - 1:
-                        time.sleep(2)  # 等待2秒后重试
+                        time.sleep(2)  # Wait 2 seconds before retry
                     continue
             
             return False
         
-        # 记录成功和失败的ID
+        # Record successful and failed IDs
         success_ids = []
         failed_ids = []
         
-        # 批量下载
-        for exp_id in tqdm(experiment_ids, desc="下载{image_type}文件"):
+        # Batch download
+        for exp_id in tqdm(experiment_ids, desc=f"Downloading {image_type} files"):
             if download_single_file(exp_id):
                 success_ids.append(exp_id)
             else:
                 failed_ids.append(exp_id)
         
-        # 打印总结报告
-        print("\n下载总结:")
-        print(f"成功下载: {len(success_ids)} 个文件")
-        print(f"失败下载: {len(failed_ids)} 个文件")
+        # Print summary report
+        print("\nDownload Summary:")
+        print(f"Successfully downloaded: {len(success_ids)} files")
+        print(f"Failed downloads: {len(failed_ids)} files")
         if failed_ids:
-            print("失败的ID:", failed_ids)
+            print("Failed IDs:", failed_ids)
         
         return success_ids, failed_ids
     
     def preprocess_annotation_data(self):
         """
-        安全优化的注解数据预处理，确保结果完全一致
+        Safely optimized annotation data preprocessing to ensure completely consistent results
         """
-        print("开始预处理注解数据...")
+        print("Starting annotation data preprocessing...")
         
-        # 创建左右半脑标记（保持不变）
+        # Create left/right hemisphere labels (keep unchanged)
         z_mid = self.anno.shape[2] // 2
         annot_labeled = np.where(
             np.arange(self.anno.shape[2]) < z_mid,
@@ -460,11 +460,11 @@ class AllenDataFusion:
             np.char.add(self.anno.astype(str), "_right")
         )
         
-        # 修复不对称区域（保持原有逻辑）
+        # Fix asymmetric regions (keep original logic)
         unique_elements = np.unique(annot_labeled)
         
-        print("修复不对称区域...")
-        for area in tqdm(unique_elements, desc="修复不对称区域"):
+        print("Fixing asymmetric regions...")
+        for area in tqdm(unique_elements, desc="Fixing asymmetric regions"):
             if area.endswith('_right') and area.replace('_right', '_left') not in unique_elements:
                 x, y, z = np.where(annot_labeled == area)
                 if len(z) > 0:
@@ -473,41 +473,41 @@ class AllenDataFusion:
                         if 0 <= symmetric_z[i] < self.anno.shape[2]:
                             annot_labeled[x[i], y[i], symmetric_z[i]] = area.replace('_right', '_left')
         
-        # 更新唯一元素列表
+        # Update unique elements list
         unique_elements = np.unique(annot_labeled)
         
-        # 优化掩码计算部分，添加进度条
-        print("预计算区域掩码...")
+        # Optimize mask calculation part, add progress bar
+        print("Precomputing region masks...")
         area_masks = {}
         
-        for area in tqdm(unique_elements, desc="计算区域掩码"):
+        for area in tqdm(unique_elements, desc="Calculating region masks"):
             mask = (annot_labeled == area)
-            if mask.sum() > 0:  # 只保存有体素的区域
+            if mask.sum() > 0:  # Only save regions with voxels
                 area_masks[area] = mask
         
         valid_areas = list(area_masks.keys())
-        print(f"预处理完成，共有 {len(valid_areas)} 个有效区域")
+        print(f"Preprocessing completed, total {len(valid_areas)} valid regions")
         
         return annot_labeled, area_masks, valid_areas
     
     def process_experiment_fast(self, experiment_id, annot_labeled, area_masks, valid_areas, 
                             base_dir, output_dir=None, use_projection_density=True):
         """
-        处理单个实验数据
+        Process single experiment data
         
-        参数:
-            experiment_id: 实验ID (如 100140756)
-            annot_labeled: 3D标注数组
-            area_masks: 预计算的脑区掩码字典
-            valid_areas: 有效脑区列表
-            base_dir: 数据基础目录
-            output_dir: 结果保存路径（可选）
-            use_projection_density: 是否使用投影密度，False则使用投影能量
+        Parameters:
+            experiment_id: Experiment ID (e.g., 100140756)
+            annot_labeled: 3D annotation array
+            area_masks: Precomputed brain region mask dictionary
+            valid_areas: List of valid brain regions
+            base_dir: Data base directory
+            output_dir: Result save path (optional)
+            use_projection_density: Whether to use projection density, False uses projection energy
             
-        返回:
-            dict: 包含实验结果的字典
+        Returns:
+            dict: Dictionary containing experiment results
         """
-        # 1. 动态生成文件路径
+        # 1. Dynamically generate file paths
         if use_projection_density:
             data_file = os.path.join(base_dir, f"projection_density/{experiment_id}_projection_density.nrrd")
             data_type = "projection_density"
@@ -517,54 +517,54 @@ class AllenDataFusion:
         
         injection_file = os.path.join(base_dir, f"injection_fraction/{experiment_id}_injection_fraction.nrrd")
         
-        print(f"\n▶ 开始处理实验 {experiment_id}...")
+        print(f"\n▶ Starting to process experiment {experiment_id}...")
         
-        # 2. 加载数据（带错误处理）
+        # 2. Load data (with error handling)
         try:
-            print("├─ 加载数据文件中...")
+            print("├─ Loading data files...")
             data_array, _ = nrrd.read(data_file)
             inf, _ = nrrd.read(injection_file)
         except FileNotFoundError as e:
-            error_msg = f"└─ 文件不存在: {str(e)}"
+            error_msg = f"└─ File does not exist: {str(e)}"
             print(error_msg)
             return {'experiment_id': experiment_id, 'error': 'file_not_found'}
         except Exception as e:
-            error_msg = f"└─ 读取数据时出错: {str(e)}"
+            error_msg = f"└─ Error reading data: {str(e)}"
             print(error_msg)
             return {'experiment_id': experiment_id, 'error': 'read_error'}
         
-        # 3. 计算注射中心
-        print("├─ 计算注射中心...")
+        # 3. Calculate injection center
+        print("├─ Calculating injection center...")
         injection_mask = inf >= 1
         if not injection_mask.any():
-            print("└─ 未检测到有效注射区域")
+            print("└─ No valid injection region detected")
             return {'experiment_id': experiment_id, 'injection_position': 'unknown'}
         
         weights = data_array[injection_mask]
         centroid = [np.average(coords, weights=weights) 
                 for coords in np.where(injection_mask)]
         
-        # 4. 获取注射位置
+        # 4. Get injection position
         try:
             inj_pos = annot_labeled[tuple(np.round(centroid).astype(int))]
-            print(f"├─ 注射位置: {inj_pos}")
+            print(f"├─ Injection position: {inj_pos}")
         except IndexError:
             inj_pos = 'unknown'
-            print("├─ 注射位置: 未知（坐标越界）")
+            print("├─ Injection position: Unknown (coordinates out of bounds)")
         
-        # 5. 计算各脑区数据的均值
-        print("├─ 计算脑区数据均值...")
+        # 5. Calculate mean data for each brain region
+        print("├─ Calculating brain region data means...")
         data_means = {}
-        for area in tqdm(valid_areas, desc=f"处理{data_type}", leave=False):
+        for area in tqdm(valid_areas, desc=f"Processing {data_type}", leave=False):
             mask = area_masks.get(area)
             if mask is not None and mask.shape == data_array.shape:
                 masked_data = data_array[mask]
-                nonzero_data = masked_data[masked_data > 0]  # 忽略零值
+                nonzero_data = masked_data[masked_data > 0]  # Ignore zero values
                 data_means[area] = float(nonzero_data.mean()) if len(nonzero_data) > 0 else 0.0
             else:
                 data_means[area] = 0.0
         
-        # 构建结果字典
+        # Build result dictionary
         result = {
             'experiment_id': experiment_id,
             'injection_position': inj_pos,
@@ -575,58 +575,58 @@ class AllenDataFusion:
             }
         }
         
-        # 6. 保存结果（如果指定了输出目录）
+        # 6. Save results (if output directory specified)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, f"{experiment_id}_results.csv")
             try:
                 pd.DataFrame([result]).to_csv(output_path, index=False)
-                print(f"└─ 结果已保存至: {output_path}")
-                # 输出成功标识文件
+                print(f"└─ Results saved to: {output_path}")
+                # Output success flag file
                 flag_path = os.path.join(output_dir, f"{experiment_id}.COMPLETED")
                 open(flag_path, 'w').close()
-                print(f"✓ 标识文件已生成: {flag_path}")
+                print(f"✓ Flag file generated: {flag_path}")
             except Exception as e:
-                print(f"└─ 保存失败: {str(e)}")
+                print(f"└─ Save failed: {str(e)}")
         else:
-            print("└─ 处理完成（未保存文件）")
+            print("└─ Processing completed (file not saved)")
         
         return result
     
     def batch_process_experiments_sequential(self, experiment_ids, annot_labeled, area_masks, valid_areas,
                                             base_dir, output_dir, use_projection_density=True):
         """
-        批量处理实验数据（顺序版本，不使用并行）
+        Batch process experimental data (sequential version, no parallel processing)
         
         Args:
-            experiment_ids: 实验ID列表
-            annot_labeled: 标记后的注解数据
-            area_masks: 区域掩码字典
-            valid_areas: 有效区域列表
-            base_dir: 数据基础目录
-            output_dir: 输出目录
-            use_projection_density: 是否使用投影密度
+            experiment_ids: List of experiment IDs
+            annot_labeled: Labeled annotation data
+            area_masks: Region mask dictionary
+            valid_areas: List of valid regions
+            base_dir: Data base directory
+            output_dir: Output directory
+            use_projection_density: Whether to use projection density
             
         Returns:
-            DataFrame: 合并的结果
+            DataFrame: Combined results
         """
-        print("开始批量处理实验数据（顺序版本）...")
-        print(f"共需处理 {len(experiment_ids)} 个实验")
+        print("Starting batch processing of experimental data (sequential version)...")
+        print(f"Total experiments to process: {len(experiment_ids)}")
         
         all_results = []
         successful_count = 0
         failed_count = 0
         skipped_count = 0
         
-        for i, exp_id in enumerate(tqdm(experiment_ids, desc="处理实验")):
-            # 检查是否已处理
+        for i, exp_id in enumerate(tqdm(experiment_ids, desc="Processing experiments")):
+            # Check if already processed
             flag_path = os.path.join(output_dir, f"{exp_id}.COMPLETED")
             if os.path.exists(flag_path):
-                print(f"\n[{i+1}/{len(experiment_ids)}] 跳过已处理实验 {exp_id}")
+                print(f"\n[{i+1}/{len(experiment_ids)}] Skipping already processed experiment {exp_id}")
                 skipped_count += 1
                 continue
                 
-            print(f"\n[{i+1}/{len(experiment_ids)}] 处理实验 {exp_id}")
+            print(f"\n[{i+1}/{len(experiment_ids)}] Processing experiment {exp_id}")
             
             result = self.process_experiment_fast(
                 experiment_id=exp_id,
@@ -638,53 +638,53 @@ class AllenDataFusion:
                 use_projection_density=use_projection_density
             )
             
-            # 统计成功和失败
+            # Count successes and failures
             if 'error' in result or result.get('injection_position') == 'unknown':
                 failed_count += 1
             else:
                 successful_count += 1
                 all_results.append(result)
             
-            # 每处理10个实验显示一次进度
+            # Show progress every 10 experiments
             if (i + 1) % 10 == 0:
-                print(f"\n=== 进度: {i+1}/{len(experiment_ids)} ===")
-                print(f"成功: {successful_count}, 失败: {failed_count}, 跳过: {skipped_count}")
+                print(f"\n=== Progress: {i+1}/{len(experiment_ids)} ===")
+                print(f"Success: {successful_count}, Failed: {failed_count}, Skipped: {skipped_count}")
         
-        # 保存合并结果
+        # Save combined results
         if all_results:
             combined_df = pd.DataFrame(all_results)
             combined_output = os.path.join(output_dir, "combined_results.csv")
             combined_df.to_csv(combined_output, index=False)
-            print(f"\n批量处理完成!")
-            print(f"成功处理: {successful_count} 个实验")
-            print(f"失败: {failed_count} 个实验")
-            print(f"跳过: {skipped_count} 个已处理实验")
-            print(f"合并结果已保存至: {combined_output}")
+            print(f"\nBatch processing completed!")
+            print(f"Successfully processed: {successful_count} experiments")
+            print(f"Failed: {failed_count} experiments")
+            print(f"Skipped: {skipped_count} already processed experiments")
+            print(f"Combined results saved to: {combined_output}")
             
             return combined_df
         else:
-            print("\n批量处理完成，但没有成功处理的结果")
+            print("\nBatch processing completed, but no successful results")
             return pd.DataFrame()
     
     def save_single_result(self, experiment_id, annot_labeled, area_masks, valid_areas, base_dir, output_dir):
         """
-        处理单个实验并直接保存为CSV
+        Process single experiment and directly save as CSV
         
         Args:
-            experiment_id: 实验ID
-            annot_labeled: 标记后的注解数据
-            area_masks: 区域掩码字典
-            valid_areas: 有效区域列表
-            base_dir: 数据基础目录
-            output_dir: 输出目录
+            experiment_id: Experiment ID
+            annot_labeled: Labeled annotation data
+            area_masks: Region mask dictionary
+            valid_areas: List of valid regions
+            base_dir: Data base directory
+            output_dir: Output directory
             
         Returns:
-            str: 保存的文件路径
+            str: Saved file path
         """
-        # 确保输出目录存在
+        # Ensure output directory exists
         os.makedirs(output_dir, exist_ok=True)
         
-        # 处理实验数据
+        # Process experimental data
         result = self.process_experiment_fast(
             experiment_id=experiment_id,
             annot_labeled=annot_labeled,
@@ -694,7 +694,7 @@ class AllenDataFusion:
             output_dir=output_dir
         )
         
-        # 转换为DataFrame并保存
+        # Convert to DataFrame and save
         df = pd.DataFrame([result])
         output_path = os.path.join(output_dir, f"{experiment_id}_results.csv")
         df.to_csv(output_path, index=False)

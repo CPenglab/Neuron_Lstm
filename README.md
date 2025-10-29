@@ -91,7 +91,7 @@ Download and process raw data from Allen Institute, and integrate feature paths 
 ```python
 # Download data, here only about 10 examples are downloaded as demonstration
 # If you want to download more data, you can use the complete experimental data url.csv we provided
-AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
+AllenData = AllenDataFusion(anno, allen_brain_tree, stl_acro_dict)
 
 AllenData.download_Allen_files(  
     csv_file_path='data/experiment/url.csv',

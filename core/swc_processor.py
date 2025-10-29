@@ -1,22 +1,3 @@
-# import pyswcloader
-# import urllib
-# import pandas as pd
-# import numpy as np
-# import nrrd
-# import os
-# from tqdm import tqdm
-# from collections import defaultdict
-# import networkx as nx
-# from pyswcloader import brain
-# from pyswcloader import swc
-# import math
-# from concurrent.futures import ThreadPoolExecutor, as_completed
-# import numpy as np
-# from collections import Counter
-# import re
-# import matplotlib.pyplot as plt
-# from itertools import groupby
-
 import pandas as pd
 import numpy as np
 import math
@@ -28,15 +9,15 @@ from tqdm import tqdm
 from pyswcloader import swc, brain
 
 class SWCProcessor:
-    """SWC文件处理器 - 用于原始SWC数据处理和特征提取"""
+    """SWC file processor - for raw SWC data processing and feature extraction"""
     
     def __init__(self, annotation, resolution):
         """
-        初始化处理器
+        Initialize processor
         
         Args:
-            annotation: 脑区标注数据
-            resolution: 分辨率参数
+            annotation: Brain region annotation data
+            resolution: Resolution parameters
         """
         self.annotation = annotation
         self.resolution = resolution
@@ -45,40 +26,40 @@ class SWCProcessor:
     
     def process_swc_file(self, file_path):
         """
-        处理单个SWC文件
+        Process single SWC file
         
         Args:
-            file_path: SWC文件路径
+            file_path: SWC file path
             
         Returns:
-            tuple: (graph对象, 边数据DataFrame, 区域路径列表)
+            tuple: (graph object, edge data DataFrame, regional path list)
         """
-        # 预处理SWC数据
+        # Preprocess SWC data
         data = swc.swc_preprocess(file_path)
         
-        # 添加区域信息
+        # Add region information
         data['region'] = data.apply(
             lambda x: brain.find_region(x[['x','y','z']], self.annotation, self.resolution),
             axis=1
         )
         
-        # 构建连接图
+        # Build connection graph
         G, edge_df = self._build_connection_graph(data, file_path)
         self.graph = G
         self.edge_data = edge_df
         
-        # 提取区域路径
+        # Extract regional paths
         regional_paths = self._get_regional_paths_optimized(G)
         
         return G, edge_df, regional_paths
     
     def _build_connection_graph(self, data, file_path):
-        """构建神经元区域连接有向图"""
+        """Build directed graph of neuronal region connections"""
         G = nx.DiGraph()
         edge_data = []
         neuron_name = os.path.basename(file_path).split('.')[0]
         
-        # 添加节点
+        # Add nodes
         for idx in data.index:
             G.add_node(
                 idx,
@@ -86,10 +67,10 @@ class SWCProcessor:
                 pos=(data.loc[idx, 'x'], data.loc[idx, 'y'], data.loc[idx, 'z'])
             )
         
-        # 找到根节点
+        # Find root node
         root_node = data[data['parent'] == -1].index[0]
         
-        # 构建连接关系
+        # Build connection relationships
         for idx in data.index:
             if idx == root_node:
                 continue
@@ -98,16 +79,16 @@ class SWCProcessor:
             if parent_idx not in data.index:
                 continue
             
-            # 计算几何特征
+            # Calculate geometric features
             child_coords = data.loc[idx, ['x', 'y', 'z']].values
             parent_coords = data.loc[parent_idx, ['x', 'y', 'z']].values
             distance = math.dist(child_coords, parent_coords)
             
-            # 区域信息
+            # Region information
             child_region = data.loc[idx, 'region']
             parent_region = data.loc[parent_idx, 'region']
             
-            # 添加边
+            # Add edge
             edge_attrs = {
                 'from_region': parent_region,
                 'to_region': child_region,
@@ -116,7 +97,7 @@ class SWCProcessor:
             }
             G.add_edge(parent_idx, idx, **edge_attrs)
             
-            # 记录边信息
+            # Record edge information
             edge_data.append({
                 'parent_id': parent_idx,
                 'child_id': idx,
@@ -130,18 +111,18 @@ class SWCProcessor:
         return G, pd.DataFrame(edge_data)
     
     def _get_regional_paths_optimized(self, G):
-        """拓扑排序+动态规划优化获取区域路径"""
+        """Topological sorting + dynamic programming optimization to get regional paths"""
         if not G:
             return []
         
         topo_order = list(nx.topological_sort(G))
         root = topo_order[0]
         
-        # 预缓存信息
+        # Pre-cache information
         region_cache = {n: G.nodes[n]['region'] for n in G.nodes}
         edge_length_cache = {(u, v): d['length'] for u, v, d in G.edges(data=True)}
         
-        # 动态规划
+        # Dynamic programming
         dp = defaultdict(list)
         dp[root] = [{
             'node_path': [root],
@@ -160,13 +141,13 @@ class SWCProcessor:
                     }
                     dp[node].append(new_path)
         
-        # 收集叶子节点路径
+        # Collect leaf node paths
         leaves = [n for n in G.nodes if G.out_degree(n) == 0]
         return [path for leaf in leaves for path in dp[leaf]]
     
     @staticmethod
     def compress_path(path):
-        """压缩连续相同区域的路径"""
+        """Compress paths with consecutive identical regions"""
         compressed = []
         for region, group in groupby(path):
             count = len(list(group))
@@ -175,15 +156,15 @@ class SWCProcessor:
     
     def extract_path_features(self, regional_paths, neuron_id, folder_name):
         """
-        从区域路径中提取特征
+        Extract features from regional paths
         
         Args:
-            regional_paths: 区域路径列表
-            neuron_id: 神经元ID
-            folder_name: 文件夹名称
+            regional_paths: Regional path list
+            neuron_id: Neuron ID
+            folder_name: Folder name
             
         Returns:
-            list: 路径特征字典列表
+            list: Path feature dictionary list
         """
         features = []
         for path_id, path_data in enumerate(regional_paths):
@@ -200,7 +181,7 @@ class SWCProcessor:
         return features
 
 class BatchSWCProcessor:
-    """批量SWC文件处理器"""
+    """Batch SWC file processor"""
     
     def __init__(self, annotation, resolution):
         self.annotation = annotation
@@ -209,14 +190,14 @@ class BatchSWCProcessor:
     
     def process_folder(self, folder_path, save_results=True):
         """
-        处理文件夹中的所有SWC文件
+        Process all SWC files in folder
         
         Args:
-            folder_path: 文件夹路径
-            save_results: 是否保存结果
+            folder_path: Folder path
+            save_results: Whether to save results
             
         Returns:
-            list: 所有神经元的路径特征
+            list: Path features for all neurons
         """
         folder_results = []
         swc_files = [f for f in os.listdir(folder_path) if f.endswith('.swc')]
@@ -227,20 +208,20 @@ class BatchSWCProcessor:
                 swc_path = os.path.join(folder_path, swc_file)
                 neuron_id = swc_file.split('.')[0]
                 
-                # 处理单个SWC文件
+                # Process single SWC file
                 G, edges, regional_paths = self.processor.process_swc_file(swc_path)
                 
-                # 提取特征
+                # Extract features
                 path_features = self.processor.extract_path_features(
                     regional_paths, neuron_id, folder_name
                 )
                 folder_results.extend(path_features)
                 
             except Exception as e:
-                print(f"处理文件 {swc_file} 时出错: {str(e)}")
+                print(f"Error processing file {swc_file}: {str(e)}")
                 continue
         
-        # 保存结果
+        # Save results
         if save_results and folder_results:
             df = pd.DataFrame(folder_results)
             output_path = os.path.join(folder_path, 'regional_paths.csv')
@@ -250,13 +231,13 @@ class BatchSWCProcessor:
     
     def process_batch_folders(self, root_path):
         """
-        批量处理多个文件夹
+        Batch process multiple folders
         
         Args:
-            root_path: 根目录路径
+            root_path: Root directory path
             
         Returns:
-            pd.DataFrame: 合并的结果
+            pd.DataFrame: Merged results
         """
         all_results = []
         folders = [d for d in os.listdir(root_path) if os.path.isdir(os.path.join(root_path, d))]
@@ -267,7 +248,7 @@ class BatchSWCProcessor:
             if not os.path.exists(folder_path):
                 continue
                 
-            # 检查是否已有结果
+            # Check if results already exist
             result_file = os.path.join(folder_path, 'regional_paths.csv')
             if os.path.exists(result_file):
                 try:
@@ -277,16 +258,15 @@ class BatchSWCProcessor:
                 except:
                     pass
             
-            # 处理文件夹
+            # Process folder
             folder_results = self.process_folder(folder_path, save_results=True)
             all_results.extend(folder_results)
         
-        # 保存合并结果
+        # Save merged results
         if all_results:
             final_df = pd.DataFrame(all_results)
             final_output = os.path.join(root_path, 'all_regional_paths.csv')
             final_df.to_csv(final_output, index=False)
-            print(f"所有结果已保存到: {final_output}")
+            print(f"All results saved to: {final_output}")
         
         return pd.DataFrame(all_results) if all_results else pd.DataFrame()
-
