@@ -6,17 +6,13 @@ import pandas as pd
 import pyswcloader
 import numpy as np
 
-import importlib
-import core
-
-importlib.reload(core.data_fusion)
-importlib.reload(core.feature_integrator)
-importlib.reload(core.model)
 
 #############swc_processor
 # 加载注解数据
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
 resolution = 25  # 根据实际情况调整
+allen_brain_tree = pyswcloader.brain.allen_brain_tree('data/1.json')
+stl_acro_dict = pyswcloader.brain.acronym_dict('data/1.json')
 
 # 创建批量处理器
 batch_processor = BatchSWCProcessor(anno, resolution)
@@ -30,8 +26,9 @@ print(f"处理完成，共得到 {len(results)} 条路径记录")
 
 # 在你的主程序中这样使用
 
+
 # 加载数据
-directed_df=pd.read_csv('data/小鼠邻接矩阵_filted_anno.csv',index_col=0)
+directed_df=pd.read_csv('data/Mouse_brain_adjacency_matrix.csv',index_col=0)
 file = pd.read_csv('data/orig_swc_data/test/unzip/all_regional_paths.csv')
 # file1 = pd.read_csv('data/neuron_path_data/zip_fold/海马.zip')
 # file2 = pd.read_csv('data/neuron_path_data/zip_fold/前额叶皮层.zip')
@@ -42,23 +39,19 @@ combined_df = pd.concat([file], ignore_index=True)
 # combined_df = pd.concat([file1,file2,file3], ignore_index=True)
 
 
-# 加载脑区数据
-allen_brain_tree = pyswcloader.brain.allen_brain_tree('data/1.json')
-stl_acro_dict = pyswcloader.brain.acronym_dict('data/1.json')
-
 # 创建处理器
-processor = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
+processor_swc = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
 
 
 # 处理路径数据
-keys_set = processor.filter_problematic_nodes(directed_df, stl_acro_dict)
+keys_set = processor_swc.filter_problematic_nodes(directed_df, stl_acro_dict)
 
-combined_df = processor.process_path_pipeline(combined_df,keys_set)
+combined_df = processor_swc.process_path_pipeline(combined_df,keys_set)
 
 
 
 # 构建代表性路径
-unique_pairs = processor.build_representative_paths(
+unique_pairs = processor_swc.build_representative_paths(
     combined_df, 
     save_progress_path='data/neuron_path_data/example/progress.csv'
 )
@@ -71,7 +64,7 @@ unique_pairs = processor.build_representative_paths(
 
 # 添加替换后的路径
 unique_pairs['replaced_path'] = unique_pairs['path'].apply(
-    processor.replace_nodes_with_acronyms
+    processor_swc.replace_nodes_with_acronyms
 )
 
 unique_pairs['replaced_start_node'] = unique_pairs['replaced_path'].str.split('→').str[0]
@@ -94,17 +87,12 @@ AllenData.download_Allen_files(
     image_type="projection_density"
 )
 
-
-
-
-
-
 all_experiments = pd.read_csv('data/experiment/url.csv')
 
 # 初始化融合器
 fusion_processor = AllenDataFusion(anno, allen_brain_tree, stl_acro_dict)
 
-# 预处理注解数据（只做一次）
+# 预处理注解数据（只做一次），及其耗时以及占用内存
 annot_labeled, area_masks, valid_areas = fusion_processor.preprocess_annotation_data()
 
 # 实验ID列表
@@ -124,7 +112,7 @@ results_df = fusion_processor.batch_process_experiments_sequential(
 
 
 
-
+######数据整合
 unique_pairs = pd.read_csv('data/neuron_path_data/zip_fold/result.csv')
 
 
@@ -159,7 +147,7 @@ final_results = fusion_processor.integrate_paths_with_intensity(
 # 保存结果
 final_results.to_csv('data/model/final_results.csv', index=False)
 
-final_results = pd.read_csv('data/model/final_results.csv')
+# final_results = pd.read_csv('data/model/final_results.csv')
 
 
 
@@ -167,24 +155,24 @@ final_results = pd.read_csv('data/model/final_results.csv')
 ###model
 # 使用示例
 # 初始化处理器
-processor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
+processor_SequenceDataProcessor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
 
 # 加载和准备数据
-X, y_log, max_len, pca = processor.load_and_prepare_data('data/model/final_results.csv', window_size=5)
+X, y_log, max_len, pca = processor_SequenceDataProcessor.load_and_prepare_data('data/model/final_results.csv', window_size=3)
 
 # 分割数据
-node_train, node_test, strength_train, strength_test = processor.split_data(X, y_log)
+node_train, node_test, strength_train, strength_test = processor_SequenceDataProcessor.split_data(X, y_log)
 
 # 准备最终数据
-gene_train, gene_test, init_strength_train, init_strength_test, strength_train_shift, strength_test_shift = processor.prepare_final_data(
+gene_train, gene_test, init_strength_train, init_strength_test, strength_train_shift, strength_test_shift = processor_SequenceDataProcessor.prepare_final_data(
     node_train, node_test, strength_train, strength_test, max_len
 )
 
 # 构建模型
-model = processor.build_true_autoregressive_model_with_k(max_len=5,gene_embed_dim=64)
+model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=3,gene_embed_dim=64)
 
 # 训练模型（使用内置回调）
-r2_callback = processor.MultiInputR2ScoreCallback(
+r2_callback = processor_SequenceDataProcessor.MultiInputR2ScoreCallback(
     validation_data=([gene_test, init_strength_test], strength_test_shift)
 )
 
@@ -197,13 +185,25 @@ history = model.fit(
     callbacks=[r2_callback]
 )
 
-# 获取PCA进行特征分析
-pca = processor.get_pca()
+gene_all = np.concatenate([gene_train, gene_test], axis=0)
+init_strength_all = np.concatenate([init_strength_train, init_strength_test], axis=0)
+strength_shift_all = np.concatenate([strength_train_shift, strength_test_shift], axis=0)
 
 
+# 计算基因重要性
+position_imp, dim_imp = processor_SequenceDataProcessor.compute_gene_importance(
+    model=model,
+    dataset=(gene_all, init_strength_all),
+    target_timestep=-1,
+    n_samples=20000
+)
 
+# 获取原始基因重要性
+gene_importance, gene_importance_df = processor_SequenceDataProcessor.get_gene_importance_from_pca(
+    dimension_importance=dim_imp
+)
 
-
+gene_importance_df.to_csv('data/model/gene_importance.csv')
 
 
 

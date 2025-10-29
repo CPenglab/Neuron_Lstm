@@ -25,17 +25,18 @@ def custom_activation(x):
 class SequenceDataProcessor:
 
     def __init__(self, stl_acro_dict, gene_filled_result_path):
-            """
-            初始化序列数据处理器
-            Args:
-                stl_acro_dict: 脑区缩写字典
-                gene_filled_result_path: 基因填充结果文件路径
-            """
+        """
+        初始化序列数据处理器
+        Args:
+            stl_acro_dict: 脑区缩写字典
+            gene_filled_result_path: 基因填充结果文件路径
+        """
         self.stl_acro_dict = stl_acro_dict
         self.gene_filled_result_path = gene_filled_result_path
         self.index_mapping = None
         self.gene_embeddings_df = None
         self.pca = None
+        self.result = None
         
     def load_and_prepare_data(self, filtered_results_path, window_size=5 ,n_components=64):
         """
@@ -96,7 +97,8 @@ class SequenceDataProcessor:
         ########先对列，在对行
         result = result.apply(lambda col: (col - col.mean()) / col.std(), axis=0)
         result = result.apply(lambda row: (row - row.mean()) / row.std(), axis=1)
-
+        self.result = result
+        
         # PCA降维
         self.pca = PCA(n_components=n_components)
         result_pca = self.pca.fit_transform(result)
@@ -529,3 +531,91 @@ class SequenceDataProcessor:
             strength_pred = self.output_dense(lstm_output)
             
             return strength_pred, [new_h, new_c]
+
+    def compute_gene_importance(self, model, dataset, target_timestep=-1, n_samples=100):
+        """
+        计算基因嵌入的重要性分数
+        
+        参数:
+            model: 训练好的自回归模型
+            dataset: 输入数据集 (gene_embed, init_strength)
+            target_timestep: 目标时间步（默认最后一个）
+            n_samples: 用于计算的样本数量
+            
+        返回:
+            position_importance: 每个位置的平均重要性 [max_len]
+            dimension_importance: 每个嵌入维度的平均重要性 [embed_dim]
+        """
+        # 初始化重要性矩阵
+        position_importance = np.zeros(model.input_shape[0][1])  # max_len
+        dimension_importance = np.zeros(model.input_shape[0][2])  # embed_dim
+        
+        # 获取样本
+        gene_embeds, init_strengths = dataset
+        sample_indices = np.random.choice(len(gene_embeds), n_samples, replace=False)
+        
+        # 添加进度条
+        for idx in tqdm(sample_indices, desc="计算基因重要性", unit="样本"):
+            gene_embed = tf.convert_to_tensor(gene_embeds[idx][np.newaxis])
+            init_strength = tf.convert_to_tensor(init_strengths[idx][np.newaxis])
+            
+            with tf.GradientTape(persistent=True) as tape:
+                tape.watch(gene_embed)
+                predictions = model([gene_embed, init_strength])
+                
+                # 选择目标输出（特定时间步）
+                target = predictions[:, target_timestep] if target_timestep >= 0 else predictions
+            
+            # 计算梯度
+            gradients = tape.gradient(target, gene_embed)
+            
+            # 计算位置重要性（L2范数）
+            per_position = tf.norm(gradients, axis=-1).numpy().squeeze()
+            position_importance += per_position
+            
+            # 计算维度重要性（绝对值平均）
+            per_dimension = tf.reduce_mean(tf.abs(gradients), axis=[0,1]).numpy()
+            dimension_importance += per_dimension
+        
+        # 平均重要性
+        position_importance /= n_samples
+        dimension_importance /= n_samples
+        
+        return position_importance, dimension_importance
+
+    def get_gene_importance_from_pca(self, dimension_importance, gene_names=None):
+        """
+        从PCA维度重要性计算原始基因的重要性
+        
+        参数:
+            dimension_importance: PCA维度重要性分数 [n_components]
+            gene_names: 原始基因名称列表 [n_genes]，如果为None则使用self.result的列名
+            
+        返回:
+            gene_importance: 原始基因重要性分数 [n_genes]
+            gene_importance_df: 包含基因名称和重要性分数的DataFrame
+        """
+        if gene_names is None:
+            # 使用self.result的列名
+            gene_names = self.result.columns.tolist()
+        
+        # 获取PCA的components_矩阵 (n_components × n_genes)
+        pca_components = self.pca.components_  # 形状: (n_components, n_genes)
+        
+        # 计算每个基因的重要性
+        # 方法1: 加权求和 - 每个基因的重要性 = sum(PCA维度重要性 × 该基因在PCA维度中的权重)
+        gene_importance = np.dot(dimension_importance, np.abs(pca_components))
+        
+        # 方法2: 或者使用平方加权（更强调高权重的关系）
+        # gene_importance = np.dot(dimension_importance, pca_components ** 2)
+        
+        # 创建结果DataFrame
+        gene_importance_df = pd.DataFrame({
+            'gene': gene_names,
+            'importance': gene_importance
+        })
+        
+        # 按重要性排序
+        gene_importance_df = gene_importance_df.sort_values('importance', ascending=False)
+        
+        return gene_importance, gene_importance_df
