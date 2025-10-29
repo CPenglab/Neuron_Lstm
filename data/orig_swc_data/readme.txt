@@ -1,5 +1,2 @@
-###
-此步骤消耗时间过长，在这里我们只选取了部分神经元作为演示，论文中所使用数据已处理完传至data/neuron_path_data/zip_fold中可直接使用
-
-###
-如果您需要处理自己的原始swc神经元数据，我们建议您在unzip文件夹下创建多个文件夹分批次分割大量原始数据，请注意路径格式，这样可以保证不会因程序卡死而导致数据丢失，我们将会为每个文件夹生成结果文件，并合并结果文件至unzip文件夹下
+This step is too time-consuming. Here we only selected a subset of neurons for demonstration. The data used in the paper has been processed and uploaded to data/neuron_path_data/zip_foldand can be used directly.
+If you need to process your own raw SWC neuron data, we recommend that you create multiple folders under the unzipfolder to split the large amount of raw data in batches. Please pay attention to the path format. This ensures that data loss due to program crashes can be avoided. We will generate result files for each folder and then merge the result files into the unzipfolder.
