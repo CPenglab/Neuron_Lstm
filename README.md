@@ -1,67 +1,67 @@
 # 🧠 Neuron Connectivity Analyzer
 
-## 📋 四阶段工作流程
+## 📋 Four-Stage Workflow
 
-### 1. 🎯 原始SWC数据处理
-从单神经元SWC形态学数据中提取有向连接路径
+### 1. 🎯 Raw SWC Data Processing
+Extract directed connection paths from single neuron SWC morphological data
 
-**功能特点**：
-- SWC格式解析与预处理
-- 脑区标注映射
-- 有向图网络构建
-- 拓扑排序优化
+**Features**:
+- SWC format parsing and preprocessing
+- Brain region annotation mapping
+- Directed graph network construction
+- Topological sorting optimization
 
 ```python
-# 加载脑区注解数据
+# Load brain region annotation data
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
-resolution = 25  # 根据实际情况调整
+resolution = 25  # Adjust according to actual situation
 allen_brain_tree = pyswcloader.brain.allen_brain_tree('data/1.json')
 stl_acro_dict = pyswcloader.brain.acronym_dict('data/1.json')
 
-# 创建SWC批量处理器
+# Create SWC batch processor
 batch_processor = BatchSWCProcessor(anno, resolution)
 
-# 处理单神经元SWC数据
-# 该路径下存有部分原始swc示例数据
-# 论文完整数据集已整理并放置在 data\neuron_path_data\zip_fold 目录下
+# Process single neuron SWC data
+# This path contains some example raw SWC data
+# Complete dataset for the paper has been organized and placed in data\neuron_path_data\zip_fold directory
 root_path = "data/orig_swc_data/test/unzip/"
 
-# 执行批量处理
+# Execute batch processing
 results = batch_processor.process_batch_folders(root_path)
 ```
 
 
 
-### 2. 🔍 代表性特征路径整合
-从大量连接路径中识别关键特征路径
+### 2. 🔍 Representative Feature Path Integration
+Identify key feature paths from large numbers of connection paths
 
-**功能特点**：
-- 路径频率统计分析
-- 贪心算法特征路径识别
+**Features**：
+- Path frequency statistical analysis
+- Greedy algorithm feature path identification
 
 ```python
-#加载数据
-#directed_df为小鼠脑物理邻接矩阵
-#all_regional_paths.csv为示例数据集整理出的单神经元路径信息
+# Load data
+# directed_df is the mouse brain physical adjacency matrix
+# all_regional_paths.csv contains single neuron path information organized from example dataset
 directed_df=pd.read_csv('data/Mouse_brain_adjacency_matrix.csv',index_col=0)
 file = pd.read_csv('data/orig_swc_data/test/unzip/all_regional_paths.csv')
 combined_df = pd.concat([file], ignore_index=True)
 
 
-# 创建处理器
+# Create processor
 processor_swc = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
-# 节点预处理
+# Node preprocessing
 keys_set = processor_swc.filter_problematic_nodes(directed_df, stl_acro_dict)
-# 路径预处理
+# Path preprocessing
 combined_df = processor_swc.process_path_pipeline(combined_df,keys_set)
 
-# 构建代表性路径
+# Build representative paths
 unique_pairs = processor_swc.build_representative_paths(
     combined_df, 
     save_progress_path='data/neuron_path_data/example/progress.csv'
 )
 
-#对代表性路径进行注释
+# Annotate representative paths
 unique_pairs['replaced_path'] = unique_pairs['path'].apply(
     processor_swc.replace_nodes_with_acronyms
 )
@@ -72,16 +72,17 @@ unique_pairs.to_csv('data/neuron_path_data/example/result.csv', index=False)
 
 
 
-### 3. 📊 实验数据下载处理与训练集构建
-下载与处理Allen提供的原始数据，并将特征路径与实验投射强度数据结合
+### 3. 📊 Experimental Data Download, Processing and Training Set Construction
+Download and process raw data from Allen Institute, and integrate feature paths with experimental projection intensity data
 
-**功能特点**：
-- Allen数据下载与处理
-- 特征路径与强度信息整合
+**Features**：
+- Allen data download and processing
+- Feature path and intensity information integration
 
 
 ```python
-#下载数据,这里只下载了10例数据左右作为示范，如果您想要下载更多数据，可以通过我们提供的整体实验数据url.csv
+# Download data, here only about 10 examples are downloaded as demonstration
+# If you want to download more data, you can use the complete experimental data url.csv we provided
 AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
 
 AllenData.download_Allen_files(  
@@ -98,13 +99,13 @@ AllenData.download_Allen_files(
 
 
 all_experiments = pd.read_csv('data/experiment/url.csv')
-# 初始化融合器
+# Initialize fusion processor
 fusion_processor = AllenDataFusion(anno, allen_brain_tree, stl_acro_dict)
-# 预处理注解数据，极其耗时以及占用内存
+# Preprocess annotation data, extremely time-consuming and memory-intensive
 annot_labeled, area_masks, valid_areas = fusion_processor.preprocess_annotation_data()
-# 实验ID列表
+# Experimental ID list
 id_list = all_experiments['id'].tolist()
-# 批量处理实验数据
+# Batch process experimental data
 results_df = fusion_processor.batch_process_experiments_sequential(
     experiment_ids=id_list,
     annot_labeled=annot_labeled,
@@ -117,36 +118,35 @@ results_df = fusion_processor.batch_process_experiments_sequential(
 
 
 
-# 在这里我们提供了7319544条单神经元路径统计整理后的特征路径以供使用
+# Here we provide 7319544 single neuron paths statistically organized feature paths for use
 unique_pairs = pd.read_csv('data/neuron_path_data/zip_fold/result.csv')
-# 加载和预处理Allen数据，这里我们提供了2992例完整的处理后数据
+# Load and preprocess Allen data, here we provide 2992 complete processed examples
 allen_data = fusion_processor.load_and_preprocess_allen_data(
     'data/experiment/merged_results.csv'
 )
 
-# 创建同侧和对侧矩阵
+# Create ipsilateral and contralateral matrices
 ipsi_matrix, contra_matrix = fusion_processor.create_ipsi_contra_matrices(allen_data)
 
-# 过滤节点
+# Filter nodes
 ipsi_filtered = fusion_processor.filter_matrix_nodes(ipsi_matrix, keys_set)
 contra_filtered = fusion_processor.filter_matrix_nodes(contra_matrix, keys_set)
 
-# 创建层次化矩阵
+# Create hierarchical matrix
 ipsi_hierarchical = fusion_processor.create_hierarchical_matrix(ipsi_filtered)
 
-#　过滤和归一化
+#　Filter and normalize
 ipsi_processed = fusion_processor.filter_and_normalize_matrix(ipsi_hierarchical, percentile=75)
 
-#　特征路径与强度信息整合
+#　Integrate feature paths with intensity information
 final_results = fusion_processor.integrate_paths_with_intensity(
     unique_pairs,  # 来自读取的代表性路径
     ipsi_processed,
     min_path_length=5
 )
 
-#基因表达数据通过整理digtal brain的空转数据放在了data/gene目录下
-#横坐标是区域，纵坐标是基因名，如果您有更优质数据集可按照这个格式进行编辑
-
+# Gene expression data is placed in data/gene directory by organizing spatial transcriptomics data from digital brain
+# Rows are regions, columns are gene names. If you have better datasets, you can edit them in this format
 ```
 
 
@@ -154,34 +154,34 @@ final_results = fusion_processor.integrate_paths_with_intensity(
 
 
 
-### 4. 🧠 LSTM模型训练与预测
-构建序列模型预测脑区连接强度
+### 4. 🧠 LSTM Model Training and Prediction
+Build sequence models to predict brain region connection strength
 
-**功能特点**：
-- 训练数据集构建
-- LSTM序列建模
-- 梯度重要性分析
-- 连接强度预测
+**Features**：
+- Training dataset construction
+- LSTM modeling
+- Gradient importance analysis
+- Connection strength prediction
 
 ```python
-# 初始化处理器
+# Initialize processor
 processor_SequenceDataProcessor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
 
-# 加载和准备数据输入，在这里我们已经完成了去除了完全重复部分的数据，主要目的是提取序列信息以及相对应的强度信息
+# Load and prepare data input, here we have completed removal of completely duplicate data, mainly to extract sequence information and corresponding intensity information
 X, y_log, max_len, pca = processor_SequenceDataProcessor.load_and_prepare_data('data/model/final_results.csv', window_size=5)
 
-# 分割数据
+# Split data
 node_train, node_test, strength_train, strength_test = processor_SequenceDataProcessor.split_data(X, y_log)
 
-# 准备模型训练数据，在这里为序列信息增加基因嵌入
+# Prepare model training data, here we add gene embeddings to sequence information
 gene_train, gene_test, init_strength_train, init_strength_test, strength_train_shift, strength_test_shift = processor_SequenceDataProcessor.prepare_final_data(
     node_train, node_test, strength_train, strength_test, max_len
 )
 
-# 构建LSTM模型
+# Build LSTM model
 model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=5,gene_embed_dim=64)
 
-# 训练模型，在这里我们使用回调函数确认模型在测试集中的效果
+# Train model, here we use callback functions to verify model performance in test set
 r2_callback = processor_SequenceDataProcessor.MultiInputR2ScoreCallback(
     validation_data=([gene_test, init_strength_test], strength_test_shift)
 )
@@ -196,13 +196,13 @@ history = model.fit(
 )
 
 
-# 后续进行梯度重要性分析
+# Subsequent gradient importance analysis
 gene_all = np.concatenate([gene_train, gene_test], axis=0)
 init_strength_all = np.concatenate([init_strength_train, init_strength_test], axis=0)
 strength_shift_all = np.concatenate([strength_train_shift, strength_test_shift], axis=0)
 
 
-# 计算基因以及位置重要性
+# Calculate gene and position importance
 position_imp, dim_imp = processor_SequenceDataProcessor.compute_gene_importance(
     model=model,
     dataset=(gene_all, init_strength_all),
@@ -210,12 +210,9 @@ position_imp, dim_imp = processor_SequenceDataProcessor.compute_gene_importance(
     n_samples=20000
 )
 
-# 获取原始基因重要性
+# Get original gene importance
 gene_importance, gene_importance_df = processor_SequenceDataProcessor.get_gene_importance_from_pca(
     dimension_importance=dim_imp
 )
 
 ```
-
-
-
