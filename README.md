@@ -12,6 +12,14 @@ Extract directed connection paths from single neuron SWC morphological data
 - Topological sorting optimization
 
 ```python
+# Load dependency packages
+from core.swc_processor import BatchSWCProcessor
+from core.feature_integrator import SWCPathProcessor
+from core.data_fusion import AllenDataFusion
+from core.model import SequenceDataProcessor
+import pandas as pd
+import pyswcloader
+import numpy as np
 # Load brain region annotation data
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
 resolution = 25  # Adjust according to actual situation

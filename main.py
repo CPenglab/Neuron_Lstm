@@ -7,50 +7,43 @@ import pyswcloader
 import numpy as np
 
 
-#############swc_processor
-# 加载注解数据
+############# swc_processor
+# Load annotation data
 anno = pyswcloader.brain.read_nrrd('data/annotation_25.nrrd')
-resolution = 25  # 根据实际情况调整
+resolution = 25  # Adjust according to actual situation
 allen_brain_tree = pyswcloader.brain.allen_brain_tree('data/1.json')
 stl_acro_dict = pyswcloader.brain.acronym_dict('data/1.json')
 
-# 创建批量处理器
+# Create batch processor
 batch_processor = BatchSWCProcessor(anno, resolution)
 
-# 处理所有数据
+# Process all data
 root_path = "data/orig_swc_data/test/unzip/"
 results = batch_processor.process_batch_folders(root_path)
-print(f"处理完成，共得到 {len(results)} 条路径记录")
-
-#############feature_integrator
-
-# 在你的主程序中这样使用
+print(f"Processing completed, obtained {len(results)} path records")
 
 
-# 加载数据
-directed_df=pd.read_csv('data/Mouse_brain_adjacency_matrix.csv',index_col=0)
+
+
+############# feature_integrator
+# Load data
+directed_df = pd.read_csv('data/Mouse_brain_adjacency_matrix.csv', index_col=0)
 file = pd.read_csv('data/orig_swc_data/test/unzip/all_regional_paths.csv')
-# file1 = pd.read_csv('data/neuron_path_data/zip_fold/海马.zip')
-# file2 = pd.read_csv('data/neuron_path_data/zip_fold/前额叶皮层.zip')
-# file3 = pd.read_csv('data/neuron_path_data/zip_fold/下丘脑.zip')
-
+# file1 = pd.read_csv('data/neuron_path_data/zip_fold/hippocampus.zip')
+# file2 = pd.read_csv('data/neuron_path_data/zip_fold/prefrontal_cortex.zip')
+# file3 = pd.read_csv('data/neuron_path_data/zip_fold/hypothalamus.zip')
 
 combined_df = pd.concat([file], ignore_index=True)
-# combined_df = pd.concat([file1,file2,file3], ignore_index=True)
+# combined_df = pd.concat([file1, file2, file3], ignore_index=True)
 
-
-# 创建处理器
+# Create processor
 processor_swc = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
 
-
-# 处理路径数据
+# Process path data
 keys_set = processor_swc.filter_problematic_nodes(directed_df, stl_acro_dict)
+combined_df = processor_swc.process_path_pipeline(combined_df, keys_set)
 
-combined_df = processor_swc.process_path_pipeline(combined_df,keys_set)
-
-
-
-# 构建代表性路径
+# Build representative paths
 unique_pairs = processor_swc.build_representative_paths(
     combined_df, 
     save_progress_path='data/neuron_path_data/example/progress.csv'
@@ -62,7 +55,7 @@ unique_pairs = processor_swc.build_representative_paths(
 # )
 
 
-# 添加替换后的路径
+# Add annotated paths
 unique_pairs['replaced_path'] = unique_pairs['path'].apply(
     processor_swc.replace_nodes_with_acronyms
 )
@@ -72,7 +65,10 @@ unique_pairs['replaced_start_node'] = unique_pairs['replaced_path'].str.split('�
 unique_pairs.to_csv('data/neuron_path_data/example/result.csv', index=False)
 
 
-######下载数据
+
+
+############# data_fusion
+###### Download data
 AllenData = AllenDataFusion(allen_brain_tree, stl_acro_dict)
 
 AllenData.download_Allen_files(  
@@ -89,16 +85,16 @@ AllenData.download_Allen_files(
 
 all_experiments = pd.read_csv('data/experiment/url.csv')
 
-# 初始化融合器
+# Initialize fusion processor
 fusion_processor = AllenDataFusion(anno, allen_brain_tree, stl_acro_dict)
 
-# 预处理注解数据（只做一次），及其耗时以及占用内存
+# Preprocess annotation data (do only once), extremely time-consuming and memory-intensive
 annot_labeled, area_masks, valid_areas = fusion_processor.preprocess_annotation_data()
 
-# 实验ID列表
+# Experimental ID list
 id_list = all_experiments['id'].tolist()
 
-# 批量处理实验数据（顺序版本）
+# Batch process experimental data (sequential version)
 results_df = fusion_processor.batch_process_experiments_sequential(
     experiment_ids=id_list,
     annot_labeled=annot_labeled,
@@ -106,72 +102,68 @@ results_df = fusion_processor.batch_process_experiments_sequential(
     valid_areas=valid_areas,
     base_dir="data/experiment/example",
     output_dir="data/experiment/example/result",
-    use_projection_density=True  # 使用投影密度
+    use_projection_density=True  # Use projection density
 )
 
 
 
 
-######数据整合
+###### Data integration
 unique_pairs = pd.read_csv('data/neuron_path_data/zip_fold/result.csv')
 
-
-# 1. 加载和预处理Allen数据
+# Load and preprocess Allen data
 allen_data = fusion_processor.load_and_preprocess_allen_data(
     'data/experiment/merged_results.csv'
 )
 
-# 2. 创建同侧和对侧矩阵
+# Create ipsilateral and contralateral matrices
 ipsi_matrix, contra_matrix = fusion_processor.create_ipsi_contra_matrices(allen_data)
 
-# 3. 过滤节点（需要传入keys_set）
+# Filter nodes (need to pass keys_set)
 ipsi_filtered = fusion_processor.filter_matrix_nodes(ipsi_matrix, keys_set)
 contra_filtered = fusion_processor.filter_matrix_nodes(contra_matrix, keys_set)
 
-# 4. 创建层次化矩阵,这一步对应生成ipsi_matrix_result
+# Create hierarchical matrix, this step corresponds to generating ipsi_matrix_result
 ipsi_hierarchical = fusion_processor.create_hierarchical_matrix(ipsi_filtered)
 
-# 5. 过滤和归一化
+# Filter and normalize
 ipsi_processed = fusion_processor.filter_and_normalize_matrix(ipsi_hierarchical, percentile=75)
 
 
 
 
-# 6. 与路径数据融合
+# Integrate with path data
 final_results = fusion_processor.integrate_paths_with_intensity(
-    unique_pairs,  # 来自前一步的代表性路径
+    unique_pairs,  # Representative paths from previous step
     ipsi_processed,
     min_path_length=5
 )
 
-# 保存结果
+# Save results
 final_results.to_csv('data/model/final_results.csv', index=False)
 
-# final_results = pd.read_csv('data/model/final_results.csv')
 
 
 
-
-###model
-# 使用示例
-# 初始化处理器
+############# model
+# Initialize processor
 processor_SequenceDataProcessor = SequenceDataProcessor(stl_acro_dict, 'data/gene/gene_filled_result.csv')
 
-# 加载和准备数据
+# Load and prepare data
 X, y_log, max_len, pca = processor_SequenceDataProcessor.load_and_prepare_data('data/model/final_results.csv', window_size=3)
 
-# 分割数据
+# Split data
 node_train, node_test, strength_train, strength_test = processor_SequenceDataProcessor.split_data(X, y_log)
 
-# 准备最终数据
+# Prepare final data
 gene_train, gene_test, init_strength_train, init_strength_test, strength_train_shift, strength_test_shift = processor_SequenceDataProcessor.prepare_final_data(
     node_train, node_test, strength_train, strength_test, max_len
 )
 
-# 构建模型
-model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=3,gene_embed_dim=64)
+# Build model
+model = processor_SequenceDataProcessor.build_true_autoregressive_model_with_k(max_len=3, gene_embed_dim=64)
 
-# 训练模型（使用内置回调）
+# Train model (using built-in callback)
 r2_callback = processor_SequenceDataProcessor.MultiInputR2ScoreCallback(
     validation_data=([gene_test, init_strength_test], strength_test_shift)
 )
@@ -190,7 +182,7 @@ init_strength_all = np.concatenate([init_strength_train, init_strength_test], ax
 strength_shift_all = np.concatenate([strength_train_shift, strength_test_shift], axis=0)
 
 
-# 计算基因重要性
+# Calculate gene importance
 position_imp, dim_imp = processor_SequenceDataProcessor.compute_gene_importance(
     model=model,
     dataset=(gene_all, init_strength_all),
@@ -198,25 +190,9 @@ position_imp, dim_imp = processor_SequenceDataProcessor.compute_gene_importance(
     n_samples=20000
 )
 
-# 获取原始基因重要性
+# Get original gene importance
 gene_importance, gene_importance_df = processor_SequenceDataProcessor.get_gene_importance_from_pca(
     dimension_importance=dim_imp
 )
 
 gene_importance_df.to_csv('data/model/gene_importance.csv')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
