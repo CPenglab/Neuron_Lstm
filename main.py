@@ -42,7 +42,7 @@ processor_swc = SWCPathProcessor(allen_brain_tree, stl_acro_dict)
 # Process path data
 keys_set = processor_swc.filter_problematic_nodes(directed_df, stl_acro_dict)
 combined_df = processor_swc.process_path_pipeline(combined_df, keys_set)
-
+ 
 # Build representative paths
 unique_pairs = processor_swc.build_representative_paths(
     combined_df, 
