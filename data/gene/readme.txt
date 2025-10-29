@@ -1,2 +1,1 @@
-###
-基因表达数据由digtal brain空转数据整理而来，其中行代表区域，列代表基因，如果您有更优秀的数据集，我们欢迎您使用自己构建的数据集
+The gene expression data is organized from the digtal brain spatial transcriptomics data, where rows represent brain regions and columns represent genes. If you have a better dataset, you are welcome to use your own constructed dataset.

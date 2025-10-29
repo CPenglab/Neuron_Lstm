@@ -1,3 +1,1 @@
-###
-我们在这里为您提供了从allen脑图谱下载原始数据的端口，由于数据量过大，在这里只上传了10例左右的数据，您可以按需求进行下载，其中全部实验的整理数据以放置在本目录下url.csv文件中，如您需要论文中数据，我们也将我们整理完的所有实验数据放在本目录下merged_results.csv中
-我们也提供了原始数据处理的方式，如果您需要的话
+We have provided you with a port here for downloading the original data from the allen brain atlas. Due to the large volume of data, only about 10 cases have been uploaded here. You can download as per your needs. The data from all the experiments have been organized and placed in the file url.csv in this directory. If you need the data from the paper, we have also placed all the organized experimental data in this directory as merged_results.csv.

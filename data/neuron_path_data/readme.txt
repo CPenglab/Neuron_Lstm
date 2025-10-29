@@ -1,0 +1,1 @@
+The zip_fold directory contains the complete dataset used in the paper, while the exampledirectory contains sample data.
